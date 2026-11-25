@@ -43,8 +43,8 @@ jobs:
       - run: bun run typecheck
       - run: bun run knip
       - run: bun test src tests/unit
-      - run: bun run check:exports
       - run: bun run build
+      - run: bun run check:exports
       - run: bun run check:package
       - name: Pack the release tarball
         id: pack
