@@ -86,7 +86,7 @@
     "oxlint": "1.94.0",
     "payload": "3.94.1",
     "posthog-js": "1.454.2",
-    "posthog-node": "5.74.0",
+    "posthog-node": "6.0.5",
     "publint": "^0.3.25",
     "tsc-alias": "^1.9.10",
     "typescript": "7.0.2"
