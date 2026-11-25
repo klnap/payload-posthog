@@ -1,0 +1,120 @@
+{
+  "name": "@klnap/payload-posthog",
+  "version": "0.1.0",
+  "description": "Optional PostHog analytics integration for Payload CMS Admin",
+  "license": "MIT",
+  "author": "klnap",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/exports/index.d.ts",
+      "import": "./dist/exports/index.js",
+      "default": "./dist/exports/index.js"
+    },
+    "./admin": {
+      "types": "./dist/exports/admin.d.ts",
+      "import": "./dist/exports/admin.js",
+      "default": "./dist/exports/admin.js"
+    },
+    "./support": {
+      "types": "./dist/exports/support.d.ts",
+      "import": "./dist/exports/support.js",
+      "default": "./dist/exports/support.js"
+    },
+    "./client": {
+      "types": "./dist/exports/client.d.ts",
+      "import": "./dist/exports/client.js",
+      "default": "./dist/exports/client.js"
+    },
+    "./support/server": {
+      "types": "./dist/exports/support-server.d.ts",
+      "import": "./dist/exports/support-server.js",
+      "default": "./dist/exports/support-server.js"
+    },
+    "./next-config": {
+      "types": "./dist/exports/next-config.d.ts",
+      "import": "./dist/exports/next-config.js",
+      "default": "./dist/exports/next-config.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test src tests/unit",
+    "check:exports": "bun scripts/check-exports.mjs",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "lint:oxlint": "oxlint --config .oxlintrc.json --deny-warnings --no-error-on-unmatched-pattern",
+    "check:release": "bun pm pack --dry-run && bun run check:exports",
+    "prepack": "bun run build",
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+    "knip": "knip",
+    "check:package": "publint --strict && attw --pack . --profile esm-only"
+  },
+  "peerDependencies": {
+    "@payloadcms/ui": ">=3.94.1 <4",
+    "@posthog/next": ">=0.11.0 <1",
+    "posthog-node": ">=5.61.2 <6",
+    "posthog-js": ">=1.444.0 <2",
+    "@posthog/nextjs-config": ">=1.12.2 <2",
+    "next": ">=16.4.5 <17",
+    "payload": ">=3.94.1 <4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "peerDependenciesMeta": {
+    "@posthog/nextjs-config": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@biomejs/biome": "2.6.8",
+    "@payloadcms/ui": "3.94.1",
+    "@posthog/next": "0.11.1",
+    "@posthog/nextjs-config": "^1.12.2",
+    "@types/bun": "^1.4.4",
+    "@types/node": "^26.0.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "knip": "^6.48.0",
+    "oxlint": "1.94.0",
+    "payload": "3.94.1",
+    "posthog-js": "1.454.2",
+    "posthog-node": "5.74.0",
+    "publint": "^0.3.25",
+    "tsc-alias": "^1.9.10",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "node": "^24.22.3 || >=26.13.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./dist/exports/index.js",
+  "types": "./dist/exports/index.d.ts",
+  "homepage": "https://github.com/klnap/payload-posthog#readme",
+  "bugs": {
+    "url": "https://github.com/klnap/payload-posthog/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/klnap/payload-posthog.git"
+  },
+  "keywords": [
+    "payload",
+    "payloadcms",
+    "payload-plugin",
+    "posthog",
+    "analytics",
+    "session-replay",
+    "support",
+    "nextjs"
+  ]
+}

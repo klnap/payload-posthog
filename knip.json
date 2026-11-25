@@ -1,0 +1,11 @@
+{
+  "entry": [
+    "src/exports/index.ts",
+    "src/exports/admin.ts",
+    "src/exports/client.ts",
+    "src/exports/support.ts",
+    "src/exports/support-server.ts",
+    "src/exports/next-config.ts"
+  ],
+  "project": ["src/**/*.{ts,tsx}", "scripts/**/*.mjs"]
+}

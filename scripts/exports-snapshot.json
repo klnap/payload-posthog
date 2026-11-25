@@ -1,0 +1,30 @@
+{
+  "runtime": {
+    ".": ["PostHog", "payloadDistinctId"],
+    "./admin": ["PostHogAdminProvider"],
+    "./client": ["usePostHogSupport"],
+    "./next-config": ["withPostHogConfig"],
+    "./support": [
+      "POSTHOG_SUPPORT_READY_EVENT",
+      "getPostHogSupportReady",
+      "subscribeToPostHogSupportReady"
+    ],
+    "./support/server": ["createSupportIdentityHandler", "signSupportDistinctId"]
+  },
+  "types": {
+    ".": ["PayloadPostHogOptions"],
+    "./admin": ["PostHogAdminProviderProps"],
+    "./client": [
+      "PostHogSupportOpenResult",
+      "PostHogSupportStatus",
+      "PostHogSupportUnavailableReason"
+    ],
+    "./next-config": ["PostHogNextConfigOptions"],
+    "./support": [
+      "PostHogSupportOpenResult",
+      "PostHogSupportStatus",
+      "PostHogSupportUnavailableReason"
+    ],
+    "./support/server": ["SupportIdentityHandlerDeps"]
+  }
+}
