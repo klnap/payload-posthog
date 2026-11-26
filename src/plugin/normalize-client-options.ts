@@ -15,9 +15,10 @@ export function normalizeClientOptions(
     disable_capture_url_hashes: clientOptions.disable_capture_url_hashes ?? true,
     session_recording: {
       ...clientOptions.session_recording,
-      // Native default masks every input. Only password inputs are masked by default.
-      maskAllInputs: clientOptions.session_recording?.maskAllInputs ?? false,
-      maskInputOptions: { password: true, ...clientOptions.session_recording?.maskInputOptions },
+      // Fail closed for unclassified inputs; the host can explicitly choose a native policy.
+      maskAllInputs: clientOptions.session_recording?.maskAllInputs ?? true,
+      // Passwords remain protected even when the host overrides other input masking options.
+      maskInputOptions: { ...clientOptions.session_recording?.maskInputOptions, password: true },
     },
     // Conversations is part of Support, so it stays off until Support is configured.
     disable_conversations: clientOptions.disable_conversations ?? !supportEnabled,

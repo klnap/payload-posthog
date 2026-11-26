@@ -9,7 +9,7 @@ describe('normalizeClientOptions', () => {
       capture_pageview: false,
       disable_capture_url_hashes: true,
       disable_conversations: true,
-      session_recording: { maskAllInputs: false, maskInputOptions: { password: true } },
+      session_recording: { maskAllInputs: true, maskInputOptions: { password: true } },
     })
     expect(options).not.toHaveProperty('save_referrer')
     expect(options).not.toHaveProperty('save_campaign_params')
@@ -43,7 +43,7 @@ describe('normalizeClientOptions', () => {
       disable_capture_url_hashes: false,
       save_referrer: true,
       disable_conversations: false,
-      session_recording: { maskInputOptions: { password: false, email: true } },
+      session_recording: { maskInputOptions: { password: true, email: true } },
     })
   })
 

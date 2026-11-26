@@ -50,7 +50,7 @@ Evidence: installed declarations and implementation under `node_modules/payload/
 - Installed versions are `@posthog/next` `0.11.1`, `posthog-js` `1.454.2`, `posthog-node` `5.74.0`, `@posthog/nextjs-config` `1.12.2`, Payload `3.94.1`, and Next `16.4.6`. The declared Next peer floor is `16.4.5`; that exact version was not inspected.
 - `posthog-js` and `posthog-node` expose native `captureException`; `@posthog/next` exposes request-error capture helpers. Its request handler supports server-side `beforeCapture`, disablement, and cookie-based consent; local-storage-only opt-out is not visible server-side.
 - Next `onRequestError` does not cover Proxy failures in the inspected Next 16 API. It does not capture build/type errors or every caught exception.
-- Native Replay options support input masking. Existing normalization explicitly sets `maskAllInputs: false` and masks password inputs; this is not sufficient protection for unknown or token-like text inputs. Replay defaults must be hardened before the product claims protection.
+- Native Replay options support input masking. The package now defaults `maskAllInputs: true` and keeps password masking enabled even when the host changes other mask options. Hosts can explicitly set `maskAllInputs: false`; that weakens protection and requires application-level review. The provider API cannot accept client callbacks through serialized Payload props, so field-by-field unmasking is not currently supported.
 - Existing SDK consent checks gate browser identity and Support. Server error consent requires the relevant opt-out cookie and is independently configured.
 
 Context7 documentation lookup was attempted but the service returned its monthly quota limit. These decisions use the installed package source/declarations and repository code; Next `16.4.5` itself remains unverified.
@@ -324,4 +324,4 @@ Product Analytics and PostHog Activity Logs are best-effort, mutable analytics w
 
 ### Initial implementation status
 
-The repository currently implements native Admin provider setup, pageviews, authenticated identity, guest route/auth-flow tracking, Session Replay gating, authenticated Support, and source-map re-export. It does not yet implement the broader resource/activity event catalogue, server Error Tracking, or instrumentation exports. Exact SDK constraints and the implementation coverage matrix will be updated after source verification and implementation.
+The repository currently implements native Admin provider setup, pageviews, authenticated identity, guest route/auth-flow tracking, Session Replay gating, authenticated Support, and source-map re-export. Replay now masks all inputs by default and always masks password input types. It does not yet implement the broader resource/activity event catalogue or Payload server Error Tracking. Instrumentation and config resolver implementation are in progress; the final coverage matrix will replace this status.
