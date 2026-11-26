@@ -2,6 +2,7 @@ import 'server-only'
 
 import type { OnRequestErrorOptions } from '@posthog/next'
 import type { Instrumentation } from 'next'
+import { sanitizeExceptionEvent, sanitizeExceptionProperties } from '../plugin/error-privacy'
 
 type RequestErrorHandler = Instrumentation.onRequestError
 
@@ -14,10 +15,33 @@ function getRequestErrorHandler(options?: OnRequestErrorOptions): Promise<Reques
   registration ??= Promise.resolve()
     .then(async () => {
       const { createOnRequestError } = await import('@posthog/next')
-      return options === undefined ? createOnRequestError() : createOnRequestError(options)
+      return createOnRequestError(withSafeExceptionCapture(options))
     })
     .catch(() => noOpRequestErrorHandler)
   return registration
+}
+
+function withSafeExceptionCapture(options?: OnRequestErrorOptions): OnRequestErrorOptions {
+  const beforeSend = options?.serverOptions?.before_send
+  const beforeSendHandlers = beforeSend
+    ? Array.isArray(beforeSend)
+      ? beforeSend
+      : [beforeSend]
+    : []
+  const beforeCapture = options?.beforeCapture
+
+  return {
+    ...options,
+    serverOptions: {
+      ...options?.serverOptions,
+      before_send: [...beforeSendHandlers, sanitizeExceptionEvent],
+    },
+    beforeCapture: async (context) => {
+      const result = await beforeCapture?.(context)
+      if (result === false) return false
+      return sanitizeExceptionProperties({ ...context.properties, ...(result ?? {}) })
+    },
+  }
 }
 
 function isNodeRuntime(): boolean {

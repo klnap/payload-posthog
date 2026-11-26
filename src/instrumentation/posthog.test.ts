@@ -6,7 +6,7 @@ const handlers: ReturnType<typeof mock>[] = []
 const originalRuntime = process.env.NEXT_RUNTIME
 const mockPageView = () => null
 const mockProvider = ({ children }: { children: ReactNode }) => children
-const createOnRequestError = mock(() => {
+const createOnRequestError = mock((..._args: unknown[]) => {
   const handler = mock(async () => {})
   handlers.push(handler)
   return handler
@@ -57,7 +57,28 @@ describe('PostHog instrumentation', () => {
     ])
 
     expect(createOnRequestError).toHaveBeenCalledTimes(1)
-    expect(createOnRequestError).toHaveBeenCalledWith(options)
+    const wrappedOptions = createOnRequestError.mock.calls[0]?.[0] as {
+      beforeCapture: (context: {
+        error: Error
+        request: { path: string }
+        context: Record<string, unknown>
+        properties: Record<string, unknown>
+      }) => Promise<unknown>
+      serverOptions: { before_send: unknown[] }
+    }
+    expect(wrappedOptions).toMatchObject({
+      apiKey: options.apiKey,
+      host: options.host,
+      disabled: options.disabled,
+    })
+    expect(
+      await wrappedOptions.beforeCapture({
+        error: new Error('ignored'),
+        request: { path: '/api/test' },
+        context: {},
+        properties: {},
+      })
+    ).toBe(false)
     expect(handlers[0]).toHaveBeenCalledWith(...args)
   })
 
@@ -67,7 +88,24 @@ describe('PostHog instrumentation', () => {
     await registerPostHog()
 
     expect(createOnRequestError).toHaveBeenCalledTimes(2)
-    expect(createOnRequestError.mock.calls[1]).toEqual([])
+    const options = createOnRequestError.mock.calls[1]?.[0] as {
+      beforeCapture: (context: {
+        error: Error
+        request: { path: string }
+        context: Record<string, unknown>
+        properties: Record<string, unknown>
+      }) => Promise<unknown>
+    }
+    expect(
+      await options.beforeCapture({
+        error: new Error('email@example.test'),
+        request: { path: '/api/test' },
+        context: {},
+        properties: { $exception_list: [{ type: 'Error', value: 'email@example.test' }] },
+      })
+    ).toEqual({
+      $exception_list: [{ type: 'Error', value: 'Exception details redacted' }],
+    })
   })
 
   it('matches Next.js Instrumentation.onRequestError', async () => {

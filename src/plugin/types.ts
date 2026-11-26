@@ -1,6 +1,7 @@
 import type { PostHogProviderProps } from '@posthog/next'
 import type { PostHogOptions } from 'posthog-node'
 import type { CaptureConfiguration } from './capture-config'
+import type { PayloadErrorCaptureContext } from './payload-error-tracking'
 
 type NativeOptions = Pick<
   PostHogProviderProps,
@@ -24,6 +25,12 @@ export type PayloadPostHogOptions = {
   /** Forwarded to `PostHogProvider`. Defaults to `true`. */
   bootstrapFlags?: NativeOptions['bootstrapFlags']
   payload?: {
+    errorTracking?: {
+      /** Capture unexpected Payload REST errors. Defaults to true. */
+      enabled?: boolean
+      /** Additional server-only filter. Expected HTTP 4xx errors remain suppressed. */
+      shouldCapture?: (context: PayloadErrorCaptureContext) => boolean | Promise<boolean>
+    }
     identify?: {
       /** Identify authenticated Payload users. Defaults to true. */
       enabled?: boolean

@@ -5,7 +5,7 @@ import { resolveAdminViewCapture } from './capture-config'
 const capture = resolveAdminViewCapture(undefined, ['posts', 'annual report'], ['settings'])
 
 describe('resolveAdminReadEvent', () => {
-  it('classifies list, document, and global routes with stable event metadata', () => {
+  it('classifies list, document, global, and version routes without exposing version IDs', () => {
     expect(resolveAdminReadEvent('/collections/posts', capture)).toMatchObject({
       event: { name: 'collection_read' },
       resourceSlug: 'posts',
@@ -24,6 +24,34 @@ describe('resolveAdminReadEvent', () => {
       resourceType: 'global',
       view: 'global',
     })
+    expect(resolveAdminReadEvent('/collections/posts/[id]/versions', capture)).toMatchObject({
+      event: { name: 'document_versions_read' },
+      resourceSlug: 'posts',
+      resourceType: 'collection',
+      view: 'versions',
+    })
+    expect(
+      resolveAdminReadEvent('/collections/posts/[id]/versions/[version_id]', capture)
+    ).toMatchObject({
+      event: { name: 'document_version_read' },
+      resourceSlug: 'posts',
+      resourceType: 'collection',
+      view: 'version',
+    })
+    expect(resolveAdminReadEvent('/globals/settings/versions', capture)).toMatchObject({
+      event: { name: 'global_versions_read' },
+      resourceSlug: 'settings',
+      resourceType: 'global',
+      view: 'versions',
+    })
+    expect(resolveAdminReadEvent('/globals/settings/versions/[version_id]', capture)).toMatchObject(
+      {
+        event: { name: 'global_version_read' },
+        resourceSlug: 'settings',
+        resourceType: 'global',
+        view: 'version',
+      }
+    )
   })
 
   it('decodes only configured slugs and never returns a document ID', () => {
@@ -38,7 +66,7 @@ describe('resolveAdminReadEvent', () => {
     for (const route of [
       '/collections/unknown',
       '/collections/posts/create',
-      '/collections/posts/[id]/versions',
+      '/collections/posts/[id]/versions/extra',
       '/collections/%ZZ',
       '/globals/settings/edit',
       '/custom-admin-route',

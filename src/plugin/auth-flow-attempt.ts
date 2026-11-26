@@ -17,6 +17,18 @@ type AuthFlowAttempt = {
   startedAt: number
 }
 
+export function isRecentAuthFlowAttempt(
+  attempt: AuthFlowAttempt | null,
+  now = Date.now()
+): attempt is AuthFlowAttempt {
+  return Boolean(
+    attempt &&
+      AUTH_FLOWS.has(attempt.flow) &&
+      now >= attempt.startedAt &&
+      now - attempt.startedAt <= MAX_AGE_MS
+  )
+}
+
 export function storeAuthFlowAttempt(
   storage: Pick<Storage, 'setItem'> | null,
   flow: string,
@@ -45,8 +57,7 @@ export function consumeAuthFlowAttempt(
       typeof attempt.flow !== 'string' ||
       !AUTH_FLOWS.has(attempt.flow) ||
       typeof attempt.startedAt !== 'number' ||
-      now < attempt.startedAt ||
-      now - attempt.startedAt > MAX_AGE_MS
+      !isRecentAuthFlowAttempt(attempt as AuthFlowAttempt, now)
     ) {
       return null
     }

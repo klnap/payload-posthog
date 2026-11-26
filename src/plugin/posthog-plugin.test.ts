@@ -18,7 +18,7 @@ describe('PostHog', () => {
     expect(apply({ apiKey: '' })).toBe(config)
   })
 
-  it('registers no provider when every known feature is disabled', () => {
+  it('registers no provider when every Admin feature is disabled', () => {
     const result = apply({
       apiKey: 'phc_public',
       bootstrapFlags: false,
@@ -39,7 +39,30 @@ describe('PostHog', () => {
       },
     })
 
-    expect(result).toBe(config)
+    expect(result.admin?.components?.providers).toBeUndefined()
+    expect(result.hooks?.afterError).toHaveLength(1)
+  })
+
+  it('composes Payload error tracking after existing root hooks and supports disabling it', () => {
+    const existingHook = async () => {}
+    const base = { ...config, hooks: { afterError: [existingHook] } } as Config
+
+    expect(apply({ apiKey: 'phc_public' }, base).hooks?.afterError).toHaveLength(2)
+    expect(
+      apply({ apiKey: 'phc_public', payload: { errorTracking: { enabled: false } } }, base).hooks
+        ?.afterError
+    ).toEqual([existingHook])
+  })
+
+  it('keeps error-tracking filters server-side', () => {
+    const shouldCapture = () => true
+    const result = apply({
+      apiKey: 'phc_public',
+      payload: { errorTracking: { shouldCapture } },
+    })
+
+    expect(result.hooks?.afterError?.at(-1)).toBeDefined()
+    expect(JSON.stringify(providerEntry(result))).not.toContain('shouldCapture')
   })
 
   it('validates the typed capture configuration at plugin setup', () => {

@@ -11,7 +11,7 @@ describe('capture configuration resolution', () => {
     const collection = resolveCollectionCapture(undefined, 'posts')
     const global = resolveGlobalCapture(undefined, 'settings')
 
-    expect(collection.operations).toEqual(['listRead', 'read'])
+    expect(collection.operations).toEqual(['listRead', 'read', 'versionsRead', 'versionRead'])
     expect(collection.events.listRead).toMatchObject({
       enabled: true,
       name: 'collection_read',
@@ -22,8 +22,20 @@ describe('capture configuration resolution', () => {
       name: 'document_read',
       sampleRate: 1,
     })
-    expect(global.operations).toEqual(['read'])
+    expect(collection.events.versionsRead).toMatchObject({
+      enabled: true,
+      name: 'document_versions_read',
+      sampleRate: 1,
+    })
+    expect(collection.events.versionRead).toMatchObject({
+      enabled: true,
+      name: 'document_version_read',
+      sampleRate: 1,
+    })
+    expect(global.operations).toEqual(['read', 'versionsRead', 'versionRead'])
     expect(global.events.read).toMatchObject({ enabled: true, name: 'global_read' })
+    expect(global.events.versionsRead.name).toBe('global_versions_read')
+    expect(global.events.versionRead.name).toBe('global_version_read')
   })
 
   it('uses literal prefixes only for generated names and keeps custom names final', () => {

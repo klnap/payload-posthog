@@ -4,7 +4,7 @@ export type AdminReadEvent = {
   event: ResolvedAdminViewEvent
   resourceSlug: string
   resourceType: 'collection' | 'global'
-  view: 'list' | 'document' | 'global'
+  view: 'list' | 'document' | 'global' | 'versions' | 'version'
 }
 
 export function resolveAdminReadEvent(
@@ -29,12 +29,46 @@ export function resolveAdminReadEvent(
       : null
   }
 
-  if (segments[0] === 'globals' && segments.length === 2) {
+  if (
+    segments[0] === 'collections' &&
+    segments[2] === '[id]' &&
+    segments[3] === 'versions' &&
+    (segments.length === 4 || (segments.length === 5 && segments[4] === '[version_id]'))
+  ) {
     const slug = decodeSegment(segments[1])
     if (!slug) return null
-    const event = capture.globals[slug]?.read
+    const resource = capture.collections[slug]
+    const isVersion = segments.length === 5
+    const event = isVersion ? resource?.versionRead : resource?.versionsRead
     return event?.enabled
-      ? { event, resourceSlug: slug, resourceType: 'global', view: 'global' }
+      ? {
+          event,
+          resourceSlug: slug,
+          resourceType: 'collection',
+          view: isVersion ? 'version' : 'versions',
+        }
+      : null
+  }
+
+  if (segments[0] === 'globals' && segments.length >= 2) {
+    const slug = decodeSegment(segments[1])
+    if (!slug) return null
+    const isVersions = segments[2] === 'versions'
+    if (segments.length !== (isVersions ? 3 : 2) && segments.length !== 4) return null
+    if (segments.length === 4 && (!isVersions || segments[3] !== '[version_id]')) return null
+    const resource = capture.globals[slug]
+    const event = isVersions
+      ? segments.length === 4
+        ? resource?.versionRead
+        : resource?.versionsRead
+      : resource?.read
+    return event?.enabled
+      ? {
+          event,
+          resourceSlug: slug,
+          resourceType: 'global',
+          view: isVersions ? (segments.length === 4 ? 'version' : 'versions') : 'global',
+        }
       : null
   }
 

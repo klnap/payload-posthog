@@ -4,7 +4,11 @@ import { useAuth } from '@payloadcms/ui'
 import { usePostHog } from '@posthog/next'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, useRef } from 'react'
-import { consumeAuthFlowAttempt, storeAuthFlowAttempt } from './auth-flow-attempt'
+import {
+  consumeAuthFlowAttempt,
+  isRecentAuthFlowAttempt,
+  storeAuthFlowAttempt,
+} from './auth-flow-attempt'
 import { isGuestRouteTracked, normalizeGuestRoute } from './guest-route-tracking'
 
 type Props = {
@@ -42,8 +46,9 @@ export function PostHogGuestTracking({ adminPath, guestTracking, sessionReplay }
     guestTracking.enabled && isGuestRouteTracked(pathname, adminPath, guestTracking.paths)
   const allowed = capturing && (userId !== null || guestAllowed)
   const safeForRecording = !route.sensitive && !search
-  const startedFlow = useRef<string | null>(null)
+  const startedFlow = useRef<{ flow: string; startedAt: number } | null>(null)
   const logoutWasStarted = useRef(false)
+  const sessionExpiryWasObserved = useRef(false)
   const previousRoute = useRef<string | null>(null)
   const previousUserId = useRef(userId)
 
@@ -53,12 +58,17 @@ export function PostHogGuestTracking({ adminPath, guestTracking, sessionReplay }
     previousRoute.current = route.pathname
 
     if (routeChanged && route.authFlow === 'logout') {
-      logoutWasStarted.current = userId !== null
+      sessionExpiryWasObserved.current = false
+      logoutWasStarted.current = previousUserId.current !== null
       if (allowed && logoutWasStarted.current) {
         posthog.capture('auth_logout_started', { route_template: route.route })
       }
+    } else if (routeChanged && route.authFlow === 'session_expired') {
+      logoutWasStarted.current = false
+      sessionExpiryWasObserved.current = previousUserId.current !== null
     } else if (routeChanged && userId !== null) {
       logoutWasStarted.current = false
+      sessionExpiryWasObserved.current = false
     }
   }, [allowed, posthog, route.authFlow, route.pathname, route.route, userId])
 
@@ -78,36 +88,49 @@ export function PostHogGuestTracking({ adminPath, guestTracking, sessionReplay }
   useEffect(() => {
     if (!posthog || !capturing) {
       previousUserId.current = userId
+      logoutWasStarted.current = false
+      sessionExpiryWasObserved.current = false
+      startedFlow.current = null
       return
     }
     const previous = previousUserId.current
+    const identityChanged = previous !== userId
     const persistedFlow =
-      userId !== null ? consumeAuthFlowAttempt(sessionStorageOrNull(), true) : null
-    if (userId !== null && (persistedFlow || startedFlow.current)) {
-      const flow = persistedFlow ?? startedFlow.current
-      if (flow) {
-        posthog.capture('auth_flow_succeeded', { flow, route_template: route.route })
-        startedFlow.current = null
-      }
+      identityChanged && userId !== null
+        ? consumeAuthFlowAttempt(sessionStorageOrNull(), true)
+        : null
+    const localAttempt = identityChanged && userId !== null ? startedFlow.current : null
+    if (identityChanged && userId !== null) startedFlow.current = null
+    const flow = persistedFlow ?? (isRecentAuthFlowAttempt(localAttempt) ? localAttempt.flow : null)
+    if (identityChanged && userId !== null && flow === 'login') {
+      posthog.capture('auth_login_succeeded', { route_template: route.route })
     }
-    if (previous !== userId) {
-      if (previous !== null && userId === null && logoutWasStarted.current) {
-        if (route.authFlow !== 'session_expired') {
+    if (identityChanged) {
+      if (previous !== null && userId === null) {
+        if (sessionExpiryWasObserved.current) {
+          posthog.capture('auth_session_expired', { route_template: route.route })
+        } else if (logoutWasStarted.current) {
           posthog.capture('auth_logout_completed', { route_template: route.route })
         }
         logoutWasStarted.current = false
+        sessionExpiryWasObserved.current = false
       } else if (previous !== null && userId !== null) {
         posthog.capture('auth_account_switched', { route_template: route.route })
+        logoutWasStarted.current = false
+        sessionExpiryWasObserved.current = false
+      } else if (userId !== null) {
+        logoutWasStarted.current = false
+        sessionExpiryWasObserved.current = false
       }
       previousUserId.current = userId
     }
-  }, [capturing, posthog, route.authFlow, route.route, userId])
+  }, [capturing, posthog, route.route, userId])
 
   useEffect(() => {
     if (!posthog || !guestAllowed || userId !== null) return
     const onSubmit = (event: SubmitEvent) => {
       if (!(event.target instanceof HTMLFormElement) || !route.authFlow) return
-      startedFlow.current = route.authFlow
+      startedFlow.current = { flow: route.authFlow, startedAt: Date.now() }
       storeAuthFlowAttempt(sessionStorageOrNull(), route.authFlow)
       posthog.capture('auth_flow_started', { flow: route.authFlow, route_template: route.route })
     }

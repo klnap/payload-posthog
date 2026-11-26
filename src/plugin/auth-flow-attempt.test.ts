@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'bun:test'
-import { consumeAuthFlowAttempt, storeAuthFlowAttempt } from './auth-flow-attempt'
+import {
+  consumeAuthFlowAttempt,
+  isRecentAuthFlowAttempt,
+  storeAuthFlowAttempt,
+} from './auth-flow-attempt'
 
 function createStorage(): Storage {
   const values = new Map<string, string>()
@@ -42,5 +46,11 @@ describe('auth flow attempt storage', () => {
 
     storeAuthFlowAttempt(storage, 'custom', 1000)
     expect(consumeAuthFlowAttempt(storage, true, 2000)).toBeNull()
+  })
+
+  it('expires same-page attempts after two minutes', () => {
+    expect(isRecentAuthFlowAttempt({ flow: 'login', startedAt: 1000 }, 121_000)).toBe(true)
+    expect(isRecentAuthFlowAttempt({ flow: 'login', startedAt: 1000 }, 121_001)).toBe(false)
+    expect(isRecentAuthFlowAttempt({ flow: 'other', startedAt: 1000 }, 2000)).toBe(false)
   })
 })

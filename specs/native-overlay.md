@@ -54,7 +54,7 @@ The plugin's default of `capture_pageview: false` prevents the SDK from adding i
 ## Guest tracking
 
 - Guest routes are Payload's public auth routes, read from `admin.routes`: `createFirstUser`, `forgot`, `inactivity`, `login`, `logout`, `reset`, `unauthorized`, plus `payload.guestTracking.paths`.
-- `payload.guestTracking` controls two things on guest routes: authentication lifecycle events (`auth_flow_started`, `auth_flow_succeeded`, `auth_logout_started`, `auth_logout_completed`, `auth_account_switched`) and Session Replay.
+- `payload.guestTracking` controls two things on guest routes: authentication lifecycle events (`auth_flow_started`, `auth_login_succeeded`, `auth_logout_started`, `auth_logout_completed`, `auth_account_switched`, `auth_session_expired`) and Session Replay.
 - `enabled: false` disables both for guests. Authenticated users are always tracked.
 - It does not control pageviews, autocapture, or exception capture. Those follow native configuration on every Admin page.
 - Auth events carry a `route_template` (sanitized route name), not the URL.

@@ -134,17 +134,21 @@ export function normalizeGuestRoute(pathname: string, adminPath = '/'): GuestRou
   const flow = flowFor(rawRoute)
   const root = redactedSegments[1]?.toLowerCase()
   const route =
-    root === 'collections' || root === 'globals'
-      ? redactedSegments.length <= 3
-        ? rawRoute
-        : `${redactedSegments.slice(0, 3).join('/')}/[id]`
-      : root === 'auth' && redactedSegments[2]?.toLowerCase() === 'callback'
-        ? redactedSegments.slice(0, 4).join('/')
-        : AUTH_ROUTE_NAMES.has(root ?? '') || root === 'auth'
-          ? rawRoute
-          : path === '/'
-            ? '/'
-            : '/custom-admin-route'
+    root === 'collections' && redactedSegments[4]?.toLowerCase() === 'versions'
+      ? `${redactedSegments.slice(0, 3).join('/')}/[id]/versions${redactedSegments.length > 5 ? '/[version_id]' : ''}`
+      : root === 'globals' && redactedSegments[3]?.toLowerCase() === 'versions'
+        ? `${redactedSegments.slice(0, 3).join('/')}/versions${redactedSegments.length > 4 ? '/[version_id]' : ''}`
+        : root === 'collections' || root === 'globals'
+          ? redactedSegments.length <= 3
+            ? rawRoute
+            : `${redactedSegments.slice(0, 3).join('/')}/[id]`
+          : root === 'auth' && redactedSegments[2]?.toLowerCase() === 'callback'
+            ? redactedSegments.slice(0, 4).join('/')
+            : AUTH_ROUTE_NAMES.has(root ?? '') || root === 'auth'
+              ? rawRoute
+              : path === '/'
+                ? '/'
+                : '/custom-admin-route'
   const sensitive =
     flow !== null ||
     redactedSegments.includes('[redacted]') ||

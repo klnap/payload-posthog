@@ -47,15 +47,39 @@ describe('resolveSafeAdminPageview', () => {
     })
   })
 
-  it('does not classify nested routes or create routes as resource views', () => {
-    for (const pathname of [
-      '/admin/collections/projects/secret-id/versions',
-      '/admin/collections/projects/create',
-    ]) {
-      expect(
-        resolveSafeAdminPageview(pathname, '', '/admin', 'https://cms.example.test')?.resourceRoute
-      ).toBeNull()
-    }
+  it('classifies version routes without retaining document or version IDs', () => {
+    expect(
+      resolveSafeAdminPageview(
+        '/admin/collections/projects/doc-private/versions/version-private',
+        '',
+        '/admin',
+        'https://cms.example.test'
+      )
+    ).toEqual({
+      pathname: '/collections/projects/[id]/versions/[version_id]',
+      resourceRoute: '/collections/projects/[id]/versions/[version_id]',
+      url: 'https://cms.example.test/admin/collections/projects/[id]/versions/[version_id]',
+    })
+    expect(
+      resolveSafeAdminPageview(
+        '/admin/globals/site-settings/versions/version-private',
+        '',
+        '/admin',
+        'https://cms.example.test'
+      )
+    ).toEqual({
+      pathname: '/globals/site-settings/versions/[version_id]',
+      resourceRoute: '/globals/site-settings/versions/[version_id]',
+      url: 'https://cms.example.test/admin/globals/site-settings/versions/[version_id]',
+    })
+    expect(
+      resolveSafeAdminPageview(
+        '/admin/collections/projects/create',
+        '',
+        '/admin',
+        'https://cms.example.test'
+      )?.resourceRoute
+    ).toBeNull()
   })
 
   it.each([

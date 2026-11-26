@@ -6,6 +6,7 @@ import {
 } from '../support/payload-identity-endpoint'
 import { assertSerializable } from './assert-serializable'
 import { normalizeCaptureConfiguration, resolveAdminViewCapture } from './capture-config'
+import { createPayloadAfterErrorHook } from './payload-error-tracking'
 import type { PayloadPostHogOptions } from './types'
 
 const PROVIDER = '@klnap/payload-posthog/admin#PostHogAdminProvider'
@@ -28,6 +29,24 @@ export function PostHog(options: PayloadPostHogOptions): Plugin {
     const globalSlugs = config.globals?.map(({ slug }) => slug) ?? []
     const adminViewCapture = resolveAdminViewCapture(payload.capture, collectionSlugs, globalSlugs)
     assertSerializable(adminViewCapture, 'payload.capture')
+    const errorTrackingEnabled = payload.errorTracking?.enabled ?? true
+    const configWithErrorTracking = errorTrackingEnabled
+      ? {
+          ...config,
+          hooks: {
+            ...config.hooks,
+            afterError: [
+              ...(config.hooks?.afterError ?? []),
+              createPayloadAfterErrorHook({
+                apiKey,
+                serverOptions,
+                authCollection: authCollectionsFrom(config.collections),
+                shouldCapture: payload.errorTracking?.shouldCapture,
+              }),
+            ],
+          },
+        }
+      : config
     const hasPayloadFeatures =
       (payload.identify?.enabled ?? true) ||
       (payload.guestTracking?.enabled ?? true) ||
@@ -43,7 +62,7 @@ export function PostHog(options: PayloadPostHogOptions): Plugin {
       clientOptions?.disable_session_recording !== true ||
       clientOptions?.disable_conversations === false ||
       bootstrapFlags !== false
-    if (!hasPayloadFeatures && !hasNativeFeatures) return config
+    if (!hasPayloadFeatures && !hasNativeFeatures) return configWithErrorTracking
 
     const authCollections =
       config.collections
@@ -71,7 +90,7 @@ export function PostHog(options: PayloadPostHogOptions): Plugin {
 
     const providers = config.admin?.components?.providers ?? []
     return {
-      ...config,
+      ...configWithErrorTracking,
       ...(support
         ? {
             endpoints: [
@@ -122,4 +141,9 @@ export function PostHog(options: PayloadPostHogOptions): Plugin {
       },
     }
   }
+}
+
+function authCollectionsFrom(collections: Config['collections']): string | undefined {
+  const authCollections = collections?.filter(({ auth }) => Boolean(auth)) ?? []
+  return authCollections.length === 1 ? authCollections[0]?.slug : undefined
 }

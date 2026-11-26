@@ -10,13 +10,14 @@ A standard PostHog install does not know Payload. Admin is its own React tree wi
 | ------------------------------------ | ---------------------------------------------------------------------------- |
 | Product analytics and autocapture    | Native `posthog-js`; autocapture runs only on classified safe Admin routes   |
 | Pageviews                            | Privacy-aware route tracker (see [Pageviews](#pageviews))                    |
-| Admin resource reads                 | Plugin; collection lists, documents, and globals                             |
+| Admin resource reads                 | Plugin; lists, documents, globals, and version views                          |
 | Automatic user identification        | Plugin                                                                       |
 | Authentication lifecycle events      | Plugin                                                                       |
 | Guest tracking on public auth routes | Plugin (`payload.guestTracking`)                                             |
 | Session Replay                       | Native, with guest rules from the plugin                                     |
 | Browser error tracking               | Native `posthog-js` (`capture_exceptions`)                                   |
 | Next.js request errors               | Opt-in instrumentation helpers from `@klnap/payload-posthog/instrumentation` |
+| Payload routed errors                | Plugin root `afterError` hook; unexpected errors only                        |
 | Feature flags                        | Native `@posthog/next` hooks and `bootstrapFlags`                            |
 | Authenticated Support                | Plugin identity endpoint and native Conversations                            |
 | Source-map upload                    | Native `@posthog/nextjs-config`, re-exported                                 |
@@ -88,9 +89,9 @@ bunx payload generate:importmap
 | `serverOptions`  | `PostHogProvider` → `posthog-node` | Native options, for example `host` for server-side flag evaluation. Function values are rejected. |
 | `bootstrapFlags` | `PostHogProvider`                  | Native option. The plugin defaults it to `true`. See [Feature flags](#native-posthog-apis).       |
 | `enabled`        | —                                  | `false` registers nothing. Defaults to `true`.                                                    |
-| `payload`        | —                                  | Payload-specific options: `identify`, `guestTracking`, `support`, `capture`.                      |
+| `payload`        | —                                  | Payload-specific options: `identify`, `guestTracking`, `support`, `capture`, `errorTracking`.     |
 
-`payload.capture` configures the implemented Admin read events: `collection_read`, `document_read`, and `global_read`. It does not capture mutations or general Admin activity.
+`payload.capture` configures Admin list, document, global, and version-view events: `collection_read`, `document_read`, `global_read`, `document_versions_read`, `document_version_read`, `global_versions_read`, and `global_version_read`. It does not capture mutations or general Admin activity.
 
 ```ts
 PostHog({
@@ -104,7 +105,7 @@ PostHog({
 })
 ```
 
-Read events require a signed-in Admin identity and a classified resource route. Defaults enable eligible reads; use `defaults: false` to opt out by resource category. Event settings support custom names, properties, and deterministic `sampleRate` values.
+Read events require a signed-in Admin identity and a classified resource route. Version events include only the resource slug and sanitized route template, never document or version IDs. Defaults enable eligible reads; use `defaults: false` to opt out by resource category. Event settings support custom names, properties, and deterministic `sampleRate` values.
 
 Option names, types and defaults follow the installed upstream types. See [PostHogConfig](https://posthog.com/docs/references/posthog-js/types/PostHogConfig), [PostHogOptions](https://posthog.com/docs/references/posthog-node/types/PostHogOptions) and the [`@posthog/next` reference](https://posthog.com/docs/libraries/next-js/posthog-next) for the full list.
 
@@ -156,7 +157,7 @@ payload: {
 
 `payload.guestTracking` controls two things on guest routes:
 
-- **Authentication lifecycle events:** `auth_flow_started` on form submit, `auth_flow_succeeded`, `auth_logout_started`, `auth_logout_completed` and `auth_account_switched`. Each event carries a `route_template`, not the URL.
+    - **Authentication lifecycle events:** `auth_flow_started` on form submit, `auth_login_succeeded` after a recent login and identity transition, `auth_logout_started`, `auth_logout_completed`, `auth_account_switched`, and `auth_session_expired` after an observed expiry transition. Each event carries a `route_template`, not the URL.
 - **Session Replay** for guests on those routes.
 
 Set `enabled: false` to turn both off for guests. Signed-in users are always tracked.
@@ -225,6 +226,24 @@ Use Session Replay and Error Tracking to reproduce reported problems, see what e
 
 **Browser Error Tracking:** native `capture_exceptions` behavior follows `posthog-js` options.
 
+**Payload routed errors:** unexpected errors handled by Payload's root `afterError` hook are captured by default. HTTP 4xx errors are suppressed. Disable this integration with `payload.errorTracking.enabled: false`, or add a server-side filter:
+
+```ts
+PostHog({
+  apiKey: process.env.NEXT_PUBLIC_POSTHOG_KEY!,
+  payload: {
+    errorTracking: {
+      shouldCapture: ({ error, collection, status }) =>
+        status === 500 && collection !== 'privateRecords',
+    },
+  },
+})
+```
+
+The filter cannot enable HTTP 4xx capture. Error messages, exception values, request URLs, and full file paths are removed before delivery. Stack frames retain only safe function names, line numbers, and file basenames. This hook covers errors that reach Payload's routed REST error handler; it does not prove coverage for GraphQL or caught errors.
+
+Payload awaits the native SDK's immediate send attempt to reduce event loss in short-lived serverless processes. This can delay an error response; SDK failures never replace the Payload response.
+
 **Next.js request errors:** opt in from the host's single `instrumentation.ts` file:
 
 ```ts
@@ -238,7 +257,7 @@ export async function register() {
 export const onRequestError = capturePostHogError
 ```
 
-The helper reads `NEXT_PUBLIC_POSTHOG_KEY` and `NEXT_PUBLIC_POSTHOG_HOST`. It uses `@posthog/next`'s separate cached Node client, not the client created from Payload's `serverOptions`. Next's request hook does not cover Proxy failures, build errors, or every caught exception.
+The helper reads `NEXT_PUBLIC_POSTHOG_KEY` and `NEXT_PUBLIC_POSTHOG_HOST`. It uses `@posthog/next`'s separate cached Node client, not the client created from Payload's `serverOptions`. Exception details and request URLs are sanitized before capture. Next's request hook does not cover Proxy failures, build errors, or every caught exception.
 
 Session Replay can record visible Admin content. The default input mask reduces exposure but does not hide all text, images, or personal data.
 

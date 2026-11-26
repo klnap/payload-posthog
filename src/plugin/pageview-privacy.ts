@@ -44,6 +44,12 @@ export function resolveSafeAdminPageview(
 
 function resolveResourceRoute(routePath: string): string | null {
   const segments = routePath.split('/').filter(Boolean)
+  if (segments[0] === 'collections' && segments[3] === 'versions' && segments.length === 4) {
+    return `/collections/${segments[1]}/[id]/versions`
+  }
+  if (segments[0] === 'collections' && segments[3] === 'versions' && segments.length === 5) {
+    return `/collections/${segments[1]}/[id]/versions/[version_id]`
+  }
   if (segments[0] === 'collections' && segments.length === 2) return routePath
   if (
     segments[0] === 'collections' &&
@@ -51,6 +57,12 @@ function resolveResourceRoute(routePath: string): string | null {
     !['create', 'new'].includes(segments[2]?.toLowerCase() ?? '')
   ) {
     return `/collections/${segments[1]}/[id]`
+  }
+  if (segments[0] === 'globals' && segments[2] === 'versions' && segments.length === 3) {
+    return `/globals/${segments[1]}/versions`
+  }
+  if (segments[0] === 'globals' && segments[2] === 'versions' && segments.length === 4) {
+    return `/globals/${segments[1]}/versions/[version_id]`
   }
   if (segments[0] === 'globals' && segments.length === 2) return routePath
   return null

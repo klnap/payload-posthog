@@ -1,6 +1,6 @@
-const collectionEventNames = ['listRead', 'read'] as const
+const collectionEventNames = ['listRead', 'read', 'versionsRead', 'versionRead'] as const
 
-const globalEventNames = ['read'] as const
+const globalEventNames = ['read', 'versionsRead', 'versionRead'] as const
 
 export type CollectionEventName = (typeof collectionEventNames)[number]
 export type GlobalEventName = (typeof globalEventNames)[number]
@@ -204,9 +204,17 @@ function eventNameToDefaultName(eventName: string, resourceType: CaptureResource
   const collectionNames: Readonly<Record<string, string>> = {
     list_read: 'collection_read',
     read: 'document_read',
+    versions_read: 'document_versions_read',
+    version_read: 'document_version_read',
   }
-  if (resourceType === 'collection') return collectionNames[snakeCase] ?? snakeCase
-  return 'global_read'
+  const globalNames: Readonly<Record<string, string>> = {
+    read: 'global_read',
+    versions_read: 'global_versions_read',
+    version_read: 'global_version_read',
+  }
+  return resourceType === 'collection'
+    ? (collectionNames[snakeCase] ?? snakeCase)
+    : (globalNames[snakeCase] ?? snakeCase)
 }
 
 function resolveResource<EventName extends string, Operation extends string>(
@@ -320,9 +328,26 @@ export type ResolvedAdminViewEvent = {
 
 export type AdminViewCaptureConfig = {
   collections: Readonly<
-    Record<string, { listRead: ResolvedAdminViewEvent; read: ResolvedAdminViewEvent }>
+    Record<
+      string,
+      {
+        listRead: ResolvedAdminViewEvent
+        read: ResolvedAdminViewEvent
+        versionsRead: ResolvedAdminViewEvent
+        versionRead: ResolvedAdminViewEvent
+      }
+    >
   >
-  globals: Readonly<Record<string, { read: ResolvedAdminViewEvent }>>
+  globals: Readonly<
+    Record<
+      string,
+      {
+        read: ResolvedAdminViewEvent
+        versionsRead: ResolvedAdminViewEvent
+        versionRead: ResolvedAdminViewEvent
+      }
+    >
+  >
 }
 
 export function resolveAdminViewCapture(
@@ -339,6 +364,8 @@ export function resolveAdminViewCapture(
           {
             listRead: toAdminViewEvent(events.listRead),
             read: toAdminViewEvent(events.read),
+            versionsRead: toAdminViewEvent(events.versionsRead),
+            versionRead: toAdminViewEvent(events.versionRead),
           },
         ]
       })
@@ -346,7 +373,14 @@ export function resolveAdminViewCapture(
     globals: Object.fromEntries(
       globalSlugs.map((slug) => {
         const { events } = resolveGlobalCapture(config, slug)
-        return [slug, { read: toAdminViewEvent(events.read) }]
+        return [
+          slug,
+          {
+            read: toAdminViewEvent(events.read),
+            versionsRead: toAdminViewEvent(events.versionsRead),
+            versionRead: toAdminViewEvent(events.versionRead),
+          },
+        ]
       })
     ),
   }

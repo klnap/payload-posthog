@@ -89,6 +89,7 @@ PostHog({
     identify,
     capture,
     guestTracking,
+    errorTracking,
     privacy,
     support,
   },
@@ -189,7 +190,7 @@ Names below are the target default names. A name is not implemented merely becau
 | Event | Meaning and gate |
 |---|---|
 | `auth_flow_started` | Observable Admin authentication flow start. |
-| `auth_login_succeeded` | Confirmed identity transition correlated to a recent supported Admin flow. |
+| `auth_login_succeeded` | Confirmed identity transition correlated to a recent supported login flow. |
 | `auth_login_failed` | Only if a public outcome callback exposes failure without reading form contents. |
 | `auth_logout_completed` | Confirmed identity reset/logout completion. |
 | `auth_account_switched` | Confirmed transition between distinct authenticated identities. |
@@ -254,6 +255,7 @@ Mandatory credential protection covers passwords (including revealed values), OT
 - The sole package instrumentation exports are `registerPostHog` and `capturePostHogError`. The host owns `instrumentation.ts` and composes them with other instrumentation.
 - Error Tracking is independent of Admin Product Analytics scope. Capture unexpected errors through native request-error handlers and Payload `afterError` where safe; filter expected validation/access/not-found/business errors by default where context allows.
 - Error capture must not alter responses, exception propagation, startup, or CMS outcomes. Coverage is limited to verified runtimes and paths; caught errors require native manual capture.
+- Payload error hooks await the native immediate-capture attempt to reduce serverless loss; failures are swallowed, but error responses may wait for the SDK timeout.
 - Instrumentation uses explicit/environment-based configuration, idempotent initialization, and native bounded delivery. No OpenTelemetry or proprietary global registry.
 
 The official host composition target is:
@@ -333,12 +335,14 @@ Product Analytics and PostHog Activity Logs are best-effort, mutable analytics w
 | Native `$pageview` and safe-route autocapture gating | Verified / conditional | A packed Next.js consumer sent `$pageview` to a local sink. A synthetic `reset_token` URL produced no event. Explicit native `capture_pageview` opts out of the guard. |
 | `collection_read` | Verified / conditional | A packed consumer sent the event. The payload contained the collection slug and sanitized route; numeric `depth` and `limit` were absent from `$current_url`. Requires signed-in identity and a classified Admin route. |
 | `document_read` and `global_read` | Conditional | Route resolution and policy behavior have unit coverage; live outbound events have not been verified. |
+| Version history/detail reads | Conditional | Payload collection routes `/collections/{slug}/{id}/versions[/<versionID>]` and global routes `/globals/{slug}/versions[/<versionID>]` are classified and unit-tested. IDs are omitted; live outbound events have not been verified. |
 | Event sampling and configuration | Verified / conditional | Resolver, stable deterministic sampling, and focused tests pass. Runtime behavior follows the resolved policy and consent. |
 | Identity person properties | Verified / conditional | A packed consumer sent `$set` with a synthetic email identity. Identity reset and account-switch runtime transitions remain unverified. |
 | Session Replay route gating and input-mask configuration | Conditional | Unit coverage confirms route gates and mask defaults. No Replay payload was observed, so masking in actual snapshots is unverified. |
-| Next.js request-error instrumentation | Conditional / unverified | Hook composition and failure isolation have unit coverage. A local 500 and a manual helper call produced no observable server exception at the local sink. |
-| Authentication lifecycle events | Conditional | Implemented for supported Admin flows; live event delivery and outcome coverage remain unverified. |
-| Mutations, generic Payload operations, and broader Admin activity | Unsupported | No reliable public observation point proves Admin provenance and successful commit for these events. |
-| Payload `afterError` capture | Unsupported | Not implemented. |
+| Next.js request-error instrumentation | Verified / conditional | A packed consumer sent a synthetic App Router exception to the local `/batch` sink. The error message and query-token canaries were absent. Proxy failures and caught errors remain uncovered. |
+| Authentication lifecycle events | Conditional | Flow starts, recent login transitions, logout, account switches, and observed session expiry are implemented. Login failure, password-reset, activation, and verification outcomes need host callbacks. Live lifecycle delivery remains unverified. |
+| Admin mutations | Unsupported automatically | Collection hooks cannot prove Admin provenance or committed success; native action components expose no shared public completion callback. |
+| Generic Admin activity | Manual/native | Payload has no generic semantic event bus. Hosts can use public UI hooks and native PostHog capture for selected activity; this plugin does not emit these events. |
+| Payload `afterError` capture | Verified / conditional | A synthetic thrown REST endpoint returned the same HTTP 500 response and sent one `$exception` to the local `/batch` sink. The exception value and message canary were absent. HTTP 4xx suppression has unit coverage. Root hooks do not establish GraphQL coverage; caught errors remain host-owned. Immediate capture can delay the error response. |
 
 Runtime checks used synthetic data and a local loopback sink only; no production credentials or endpoint received test events.

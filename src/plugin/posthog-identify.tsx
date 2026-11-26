@@ -87,12 +87,16 @@ export function PostHogIdentify({
     ) {
       return
     }
+    const routeTemplate =
+      readEvent.view === 'versions' || readEvent.view === 'version'
+        ? (safePageview.resourceRoute ?? safePageview.pathname)
+        : safePageview.pathname
     posthog.capture(readEvent.event.name, {
       ...readEvent.event.properties,
       $current_url: safePageview.url,
       $pathname: safePageview.pathname,
       source: 'payload',
-      route_template: safePageview.pathname,
+      route_template: routeTemplate,
       view: readEvent.view,
       ...(readEvent.resourceType === 'collection'
         ? { collection: readEvent.resourceSlug }
