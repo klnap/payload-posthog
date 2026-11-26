@@ -5,6 +5,7 @@ import {
   postHogSupportIdentityURL,
 } from '../support/payload-identity-endpoint'
 import { assertSerializable } from './assert-serializable'
+import { normalizeCaptureConfiguration } from './capture-config'
 import type { PayloadPostHogOptions } from './types'
 
 const PROVIDER = '@klnap/payload-posthog/admin#PostHogAdminProvider'
@@ -21,7 +22,20 @@ export function PostHog(options: PayloadPostHogOptions): Plugin {
     } = options
     if (!enabled || !apiKey) return config
     assertSerializable(clientOptions, 'clientOptions')
+    normalizeCaptureConfiguration(payload.capture)
     assertSerializable(serverOptions, 'serverOptions')
+    const hasPayloadFeatures =
+      (payload.identify?.enabled ?? true) ||
+      (payload.guestTracking?.enabled ?? true) ||
+      payload.support !== undefined
+    const hasNativeFeatures =
+      clientOptions?.capture_pageview !== false ||
+      clientOptions?.autocapture !== false ||
+      clientOptions?.capture_exceptions !== false ||
+      clientOptions?.disable_session_recording !== true ||
+      clientOptions?.disable_conversations === false ||
+      bootstrapFlags !== false
+    if (!hasPayloadFeatures && !hasNativeFeatures) return config
 
     const authCollections =
       config.collections

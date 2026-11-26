@@ -13,6 +13,8 @@ export function normalizeClientOptions(
     capture_pageview: clientOptions.capture_pageview ?? false,
     // The route tracker enables autocapture only after classifying the current Admin route.
     autocapture: false,
+    // Prevent an initial Replay snapshot before the route and user are classified.
+    disable_session_recording: true,
     // Hides URL hashes from captured URLs. Native default is off until defaults 2026-06-25.
     disable_capture_url_hashes: clientOptions.disable_capture_url_hashes ?? true,
     session_recording: {

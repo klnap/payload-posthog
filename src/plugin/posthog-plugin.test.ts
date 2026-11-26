@@ -18,6 +18,41 @@ describe('PostHog', () => {
     expect(apply({ apiKey: '' })).toBe(config)
   })
 
+  it('registers no provider when every known feature is disabled', () => {
+    const result = apply({
+      apiKey: 'phc_public',
+      bootstrapFlags: false,
+      clientOptions: {
+        autocapture: false,
+        capture_exceptions: false,
+        capture_pageview: false,
+        disable_conversations: true,
+        disable_session_recording: true,
+      },
+      payload: {
+        identify: { enabled: false },
+        guestTracking: { enabled: false },
+      },
+    })
+
+    expect(result).toBe(config)
+  })
+
+  it('validates the typed capture configuration at plugin setup', () => {
+    expect(() =>
+      apply({
+        apiKey: 'phc_public',
+        payload: {
+          capture: {
+            collections: {
+              defaults: { events: { read: 'not snake case' } },
+            },
+          },
+        },
+      })
+    ).toThrow('payload.capture.collections.defaults.events.read')
+  })
+
   it('registers one native provider with native options passed through unchanged', () => {
     const clientOptions = {
       api_host: 'https://events.example.test',

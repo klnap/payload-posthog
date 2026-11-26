@@ -36,6 +36,11 @@
       "types": "./dist/exports/next-config.d.ts",
       "import": "./dist/exports/next-config.js",
       "default": "./dist/exports/next-config.js"
+    },
+    "./instrumentation": {
+      "types": "./dist/exports/instrumentation.d.ts",
+      "import": "./dist/exports/instrumentation.js",
+      "default": "./dist/exports/instrumentation.js"
     }
   },
   "files": [
@@ -91,6 +96,9 @@
     "publint": "^0.3.25",
     "tsc-alias": "^1.9.10",
     "typescript": "7.0.2"
+  },
+  "dependencies": {
+    "server-only": "^0.0.1"
   },
   "engines": {
     "node": "^24.22.3 || >=26.13.1"

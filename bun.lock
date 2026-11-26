@@ -4,6 +4,9 @@
   "workspaces": {
     "": {
       "name": "@klnap/payload-posthog",
+      "dependencies": {
+        "server-only": "^0.0.1",
+      },
       "devDependencies": {
         "@arethetypeswrong/cli": "^0.18.5",
         "@biomejs/biome": "2.6.8",

@@ -8,6 +8,7 @@ describe('normalizeClientOptions', () => {
     expect(options).toMatchObject({
       capture_pageview: false,
       autocapture: false,
+      disable_session_recording: true,
       disable_capture_url_hashes: true,
       disable_conversations: true,
       session_recording: { maskAllInputs: true, maskInputOptions: { password: true } },
@@ -15,7 +16,6 @@ describe('normalizeClientOptions', () => {
     expect(options).not.toHaveProperty('save_referrer')
     expect(options).not.toHaveProperty('save_campaign_params')
     expect(options).not.toHaveProperty('capture_exceptions')
-    expect(options).not.toHaveProperty('disable_session_recording')
     expect(options).not.toHaveProperty('person_profiles')
     expect(options).not.toHaveProperty('advanced_disable_feature_flags_on_first_load')
   })
@@ -26,7 +26,7 @@ describe('normalizeClientOptions', () => {
     })
   })
 
-  it('lets host values win, including the password masking override', () => {
+  it('preserves native options while retaining the initial Replay privacy gate', () => {
     const options = normalizeClientOptions(
       {
         api_host: 'https://events.example.test',
@@ -43,6 +43,7 @@ describe('normalizeClientOptions', () => {
       disable_capture_url_hashes: false,
       save_referrer: true,
       autocapture: false,
+      disable_session_recording: true,
       disable_conversations: false,
       session_recording: { maskInputOptions: { password: true, email: true } },
     })

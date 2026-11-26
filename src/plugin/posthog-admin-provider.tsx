@@ -59,7 +59,7 @@ export async function PostHogAdminProvider({
       import('./posthog-admin-pageview'),
     ])
 
-  // Omitted capture_pageview hands pageviews to PostHogPageView. Any explicit value stays with the SDK.
+  // Omitted capture_pageview lets the privacy-aware tracker own pageviews. Explicit values stay with the SDK.
   const nativePageviews = clientOptions?.capture_pageview === undefined
 
   return (

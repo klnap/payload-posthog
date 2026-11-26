@@ -9,10 +9,23 @@
       "getPostHogSupportReady",
       "subscribeToPostHogSupportReady"
     ],
-    "./support/server": ["createSupportIdentityHandler", "signSupportDistinctId"]
+    "./support/server": ["createSupportIdentityHandler", "signSupportDistinctId"],
+    "./instrumentation": ["capturePostHogError", "registerPostHog"]
   },
   "types": {
-    ".": ["PayloadPostHogOptions"],
+    ".": [
+      "CaptureCategoryConfig",
+      "CaptureConfiguration",
+      "CaptureEventContext",
+      "CaptureEventOptions",
+      "CaptureEventSetting",
+      "CaptureProperties",
+      "CollectionCaptureSettings",
+      "CollectionEventName",
+      "GlobalCaptureSettings",
+      "GlobalEventName",
+      "PayloadPostHogOptions"
+    ],
     "./admin": ["PostHogAdminProviderProps"],
     "./client": [
       "PostHogSupportOpenResult",
@@ -25,6 +38,7 @@
       "PostHogSupportStatus",
       "PostHogSupportUnavailableReason"
     ],
-    "./support/server": ["SupportIdentityHandlerDeps"]
+    "./support/server": ["SupportIdentityHandlerDeps"],
+    "./instrumentation": []
   }
 }

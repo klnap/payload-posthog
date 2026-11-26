@@ -1,5 +1,6 @@
 import type { PostHogProviderProps } from '@posthog/next'
 import type { PostHogOptions } from 'posthog-node'
+import type { CaptureConfiguration } from './capture-config'
 
 type NativeOptions = Pick<
   PostHogProviderProps,
@@ -45,5 +46,6 @@ export type PayloadPostHogOptions = {
       /** PostHog Support identity verification secret. Keep it server-only. */
       identitySecret: string
     }
+    capture?: CaptureConfiguration
   }
 }

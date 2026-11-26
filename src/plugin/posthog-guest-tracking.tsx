@@ -26,8 +26,8 @@ function sessionStorageOrNull(): Storage | null {
 }
 
 /**
- * Guest tracking: authentication lifecycle events and Session Replay on guest routes.
- * Authenticated users are always tracked. Events carry route templates, not URLs.
+ * Track authentication lifecycle events and gate Replay by identity and route safety.
+ * Events carry route templates, not URLs.
  */
 export function PostHogGuestTracking({ adminPath, guestTracking, sessionReplay }: Props) {
   const posthog = usePostHog()
