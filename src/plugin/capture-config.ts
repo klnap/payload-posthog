@@ -1,54 +1,16 @@
-const collectionEventNames = [
-  'create',
-  'listRead',
-  'read',
-  'update',
-  'delete',
-  'duplicate',
-  'publish',
-  'unpublish',
-  'trash',
-  'restore',
-  'versionsRead',
-  'versionRead',
-  'versionRestore',
-  'draftSave',
-  'autosave',
-  'publishSchedule',
-  'unpublishSchedule',
-  'scheduleCancel',
-  'reorder',
-  'drawerOpen',
-] as const
+const collectionEventNames = ['listRead', 'read'] as const
 
-const globalEventNames = [
-  'read',
-  'update',
-  'publish',
-  'unpublish',
-  'versionsRead',
-  'versionRead',
-  'versionRestore',
-  'draftSave',
-  'autosave',
-  'publishSchedule',
-  'unpublishSchedule',
-  'scheduleCancel',
-] as const
+const globalEventNames = ['read'] as const
 
 export type CollectionEventName = (typeof collectionEventNames)[number]
 export type GlobalEventName = (typeof globalEventNames)[number]
 type CaptureResourceType = 'collection' | 'global'
-export type CaptureEventContext = Readonly<Record<string, unknown>>
-export type CaptureProperties =
-  | Readonly<Record<string, unknown>>
-  | ((context: CaptureEventContext) => Readonly<Record<string, unknown>>)
+export type CaptureProperties = Readonly<Record<string, unknown>>
 
 export type CaptureEventOptions = {
   enabled?: boolean
   name?: string
   properties?: CaptureProperties
-  when?: (context: CaptureEventContext) => boolean
   sampleRate?: number
 }
 
@@ -82,7 +44,6 @@ type ResolvedCaptureEvent = {
   enabled: boolean
   name: string
   properties?: CaptureProperties
-  when?: (context: CaptureEventContext) => boolean
   sampleRate: number
 }
 
@@ -95,12 +56,8 @@ type ResolvedCaptureResource<EventName extends string, Operation extends string>
 type ResolvedCollectionCapture = ResolvedCaptureResource<CollectionEventName, CollectionOperation>
 type ResolvedGlobalCapture = ResolvedCaptureResource<GlobalEventName, GlobalOperation>
 
-const collectionDefaults = collectionEventNames.filter(
-  (eventName): eventName is CollectionEventName => eventName !== 'autosave'
-)
-const globalDefaults = globalEventNames.filter(
-  (eventName): eventName is GlobalEventName => eventName !== 'autosave'
-)
+const collectionDefaults = collectionEventNames
+const globalDefaults = globalEventNames
 const reservedEventNames = new Set([
   '$pageview',
   '$pageleave',
@@ -117,6 +74,13 @@ const reservedEventNames = new Set([
   '$opt_in',
   '$opt_out',
 ])
+const reservedEventProperties = new Set([
+  'collection',
+  'global',
+  'route_template',
+  'source',
+  'view',
+])
 const validEventName = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/
 
 function assertEventName(name: string, path: string): void {
@@ -128,6 +92,25 @@ function assertEventName(name: string, path: string): void {
 function assertSampleRate(rate: number, path: string): void {
   if (!Number.isFinite(rate) || rate < 0 || rate > 1) {
     throw new RangeError(`${path} must be between 0 and 1`)
+  }
+}
+
+function assertSafeProperties(
+  value: unknown,
+  path = 'properties',
+  seen = new WeakSet<object>()
+): void {
+  if (typeof value !== 'object' || value === null || seen.has(value)) return
+  seen.add(value)
+  for (const [property, child] of Object.entries(value)) {
+    if (
+      property.startsWith('$') ||
+      reservedEventProperties.has(property) ||
+      /password|passcode|token|secret|credential|authorization|api[_-]?key|otp/i.test(property)
+    ) {
+      throw new TypeError(`${path}.${property} is reserved or sensitive`)
+    }
+    assertSafeProperties(child, `${path}.${property}`, seen)
   }
 }
 
@@ -182,7 +165,6 @@ function normalizeEvents<EventName extends string>(
     let enabled = baseEnabled
     let name = `${prefix}${eventNameToDefaultName(eventName, resourceType)}`
     let properties = inheritedOptions?.properties
-    let when = inheritedOptions?.when
     let sampleRate = inheritedOptions?.sampleRate ?? 1
     if (typeof inheritedSetting === 'string') name = inheritedSetting
     else if (inheritedOptions?.name) name = inheritedOptions.name
@@ -196,7 +178,6 @@ function normalizeEvents<EventName extends string>(
       enabled = overrideOptions?.enabled ?? inheritedOptions?.enabled ?? true
       name = overrideOptions?.name ?? inheritedOptions?.name ?? name
       properties = overrideOptions?.properties ?? inheritedOptions?.properties
-      when = overrideOptions?.when ?? inheritedOptions?.when
       sampleRate = overrideOptions?.sampleRate ?? inheritedOptions?.sampleRate ?? sampleRate
     } else if (overrideSetting === false || inheritedSetting === false) {
       enabled = false
@@ -209,12 +190,11 @@ function normalizeEvents<EventName extends string>(
       enabled = inheritedOptions.enabled ?? true
       name = inheritedOptions.name ?? name
       properties = inheritedOptions.properties
-      when = inheritedOptions.when
       sampleRate = inheritedOptions.sampleRate ?? sampleRate
     }
 
     assertSampleRate(sampleRate, `${path}.events.${eventName}.sampleRate`)
-    return [eventName, { enabled, name, properties, when, sampleRate }] as const
+    return [eventName, { enabled, name, properties, sampleRate }] as const
   })
   return Object.fromEntries(entries) as Record<EventName, ResolvedCaptureEvent>
 }
@@ -222,43 +202,11 @@ function normalizeEvents<EventName extends string>(
 function eventNameToDefaultName(eventName: string, resourceType: CaptureResourceType): string {
   const snakeCase = eventName.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
   const collectionNames: Readonly<Record<string, string>> = {
-    create: 'document_created',
     list_read: 'collection_read',
     read: 'document_read',
-    update: 'document_updated',
-    delete: 'document_deleted',
-    duplicate: 'document_duplicated',
-    publish: 'document_published',
-    unpublish: 'document_unpublished',
-    trash: 'document_trashed',
-    restore: 'document_restored',
-    versions_read: 'document_versions_read',
-    version_read: 'document_version_read',
-    version_restore: 'document_version_restored',
-    draft_save: 'document_draft_saved',
-    autosave: 'document_autosaved',
-    publish_schedule: 'document_publish_scheduled',
-    unpublish_schedule: 'document_unpublish_scheduled',
-    schedule_cancel: 'document_schedule_cancelled',
-    reorder: 'document_reordered',
-    drawer_open: 'document_drawer_opened',
   }
   if (resourceType === 'collection') return collectionNames[snakeCase] ?? snakeCase
-  const globalNames: Readonly<Record<string, string>> = {
-    read: 'read',
-    update: 'updated',
-    publish: 'published',
-    unpublish: 'unpublished',
-    versions_read: 'versions_read',
-    version_read: 'version_read',
-    version_restore: 'version_restored',
-    draft_save: 'draft_saved',
-    autosave: 'autosaved',
-    publish_schedule: 'publish_scheduled',
-    unpublish_schedule: 'unpublish_scheduled',
-    schedule_cancel: 'schedule_cancelled',
-  }
-  return `global_${globalNames[snakeCase] ?? snakeCase}`
+  return 'global_read'
 }
 
 function resolveResource<EventName extends string, Operation extends string>(
@@ -363,6 +311,56 @@ export function resolveGlobalCapture(
   )
 }
 
+export type ResolvedAdminViewEvent = {
+  enabled: boolean
+  name: string
+  properties?: CaptureProperties
+  sampleRate: number
+}
+
+export type AdminViewCaptureConfig = {
+  collections: Readonly<
+    Record<string, { listRead: ResolvedAdminViewEvent; read: ResolvedAdminViewEvent }>
+  >
+  globals: Readonly<Record<string, { read: ResolvedAdminViewEvent }>>
+}
+
+export function resolveAdminViewCapture(
+  config: CaptureConfiguration | undefined,
+  collectionSlugs: readonly string[],
+  globalSlugs: readonly string[]
+): AdminViewCaptureConfig {
+  return {
+    collections: Object.fromEntries(
+      collectionSlugs.map((slug) => {
+        const { events } = resolveCollectionCapture(config, slug)
+        return [
+          slug,
+          {
+            listRead: toAdminViewEvent(events.listRead),
+            read: toAdminViewEvent(events.read),
+          },
+        ]
+      })
+    ),
+    globals: Object.fromEntries(
+      globalSlugs.map((slug) => {
+        const { events } = resolveGlobalCapture(config, slug)
+        return [slug, { read: toAdminViewEvent(events.read) }]
+      })
+    ),
+  }
+}
+
+function toAdminViewEvent(event: ResolvedCaptureEvent): ResolvedAdminViewEvent {
+  return {
+    enabled: event.enabled,
+    name: event.name,
+    properties: event.properties,
+    sampleRate: event.sampleRate,
+  }
+}
+
 /** Validates configured names and sampling values without changing the caller's config. */
 export function normalizeCaptureConfiguration(
   config: CaptureConfiguration = {}
@@ -407,6 +405,7 @@ export function normalizeCaptureConfiguration(
           if (setting.sampleRate !== undefined) {
             assertSampleRate(setting.sampleRate, `${path}.events.${eventName}.sampleRate`)
           }
+          assertSafeProperties(setting.properties)
         }
       }
       if (Array.isArray(settings.operations)) {

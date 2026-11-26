@@ -5,7 +5,7 @@ import {
   postHogSupportIdentityURL,
 } from '../support/payload-identity-endpoint'
 import { assertSerializable } from './assert-serializable'
-import { normalizeCaptureConfiguration } from './capture-config'
+import { normalizeCaptureConfiguration, resolveAdminViewCapture } from './capture-config'
 import type { PayloadPostHogOptions } from './types'
 
 const PROVIDER = '@klnap/payload-posthog/admin#PostHogAdminProvider'
@@ -24,10 +24,18 @@ export function PostHog(options: PayloadPostHogOptions): Plugin {
     assertSerializable(clientOptions, 'clientOptions')
     normalizeCaptureConfiguration(payload.capture)
     assertSerializable(serverOptions, 'serverOptions')
+    const collectionSlugs = config.collections?.map(({ slug }) => slug) ?? []
+    const globalSlugs = config.globals?.map(({ slug }) => slug) ?? []
+    const adminViewCapture = resolveAdminViewCapture(payload.capture, collectionSlugs, globalSlugs)
+    assertSerializable(adminViewCapture, 'payload.capture')
     const hasPayloadFeatures =
       (payload.identify?.enabled ?? true) ||
       (payload.guestTracking?.enabled ?? true) ||
-      payload.support !== undefined
+      payload.support !== undefined ||
+      [
+        ...Object.values(adminViewCapture.collections),
+        ...Object.values(adminViewCapture.globals),
+      ].some((resource) => Object.values(resource).some((event) => event.enabled))
     const hasNativeFeatures =
       clientOptions?.capture_pageview !== false ||
       clientOptions?.autocapture !== false ||
@@ -88,6 +96,7 @@ export function PostHog(options: PayloadPostHogOptions): Plugin {
                 apiKey,
                 clientOptions,
                 identityCollection,
+                adminViewCapture,
                 identify:
                   (payload.identify?.enabled ?? true)
                     ? { properties: { email: 'email', ...payload.identify?.properties } }

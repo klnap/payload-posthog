@@ -1,6 +1,7 @@
 'use client'
 
 import { lazy, Suspense } from 'react'
+import type { AdminViewCaptureConfig } from './capture-config'
 import { usePayloadRoutes } from './payload-routes'
 import { PostHogGuestTracking } from './posthog-guest-tracking'
 import { PostHogIdentify } from './posthog-identify'
@@ -12,6 +13,7 @@ const PostHogSupport = lazy(() =>
 type Props = {
   identify: { properties: Record<string, string> } | null
   identityCollection?: string
+  adminViewCapture: AdminViewCaptureConfig
   guestTracking: { enabled: boolean; paths: string[] }
   sessionReplay: boolean
   support: { launcher: 'visible' | 'hidden'; endpoint: string } | null
@@ -20,20 +22,27 @@ type Props = {
 export function PostHogAdminClientTools({
   identify,
   identityCollection,
+  adminViewCapture,
   guestTracking,
   sessionReplay,
   support,
 }: Props) {
   const { adminPath, guestPaths } = usePayloadRoutes(guestTracking.paths)
+  const hasReadCapture =
+    Object.values(adminViewCapture.collections).some((resource) =>
+      Object.values(resource).some((event) => event.enabled)
+    ) || Object.values(adminViewCapture.globals).some((resource) => resource.read.enabled)
 
   return (
     <>
-      {identify ? (
+      {identityCollection && (identify || hasReadCapture) ? (
         <Suspense fallback={null}>
           <PostHogIdentify
             collection={identityCollection}
-            properties={identify.properties}
+            identityEnabled={identify !== null}
+            properties={identify?.properties}
             adminPath={adminPath}
+            adminViewCapture={adminViewCapture}
           />
         </Suspense>
       ) : null}

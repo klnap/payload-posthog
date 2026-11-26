@@ -12,6 +12,7 @@ describe('resolveSafeAdminPageview', () => {
       )
     ).toEqual({
       pathname: '/collections/projects/[id]',
+      resourceRoute: '/collections/projects/[id]',
       url: 'https://cms.example.test/studio/collections/projects/[id]',
     })
   })
@@ -26,8 +27,35 @@ describe('resolveSafeAdminPageview', () => {
       )
     ).toEqual({
       pathname: '/globals/site-settings',
+      resourceRoute: '/globals/site-settings',
       url: 'https://cms.example.test/docs/dashboard/globals/site-settings',
     })
+  })
+
+  it('allows only numeric Payload pagination parameters and strips them from the event URL', () => {
+    expect(
+      resolveSafeAdminPageview(
+        '/admin/collections/projects',
+        'depth=1&limit=10',
+        '/admin',
+        'https://cms.example.test'
+      )
+    ).toEqual({
+      pathname: '/collections/projects',
+      resourceRoute: '/collections/projects',
+      url: 'https://cms.example.test/admin/collections/projects',
+    })
+  })
+
+  it('does not classify nested routes or create routes as resource views', () => {
+    for (const pathname of [
+      '/admin/collections/projects/secret-id/versions',
+      '/admin/collections/projects/create',
+    ]) {
+      expect(
+        resolveSafeAdminPageview(pathname, '', '/admin', 'https://cms.example.test')?.resourceRoute
+      ).toBeNull()
+    }
   })
 
   it.each([

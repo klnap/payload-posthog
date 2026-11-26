@@ -16,7 +16,6 @@
     ".": [
       "CaptureCategoryConfig",
       "CaptureConfiguration",
-      "CaptureEventContext",
       "CaptureEventOptions",
       "CaptureEventSetting",
       "CaptureProperties",

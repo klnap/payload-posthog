@@ -10,6 +10,7 @@ A standard PostHog install does not know Payload. Admin is its own React tree wi
 | ------------------------------------ | ---------------------------------------------------------------------------- |
 | Product analytics and autocapture    | Native `posthog-js`; autocapture runs only on classified safe Admin routes   |
 | Pageviews                            | Privacy-aware route tracker (see [Pageviews](#pageviews))                    |
+| Admin resource reads                 | Plugin; collection lists, documents, and globals                             |
 | Automatic user identification        | Plugin                                                                       |
 | Authentication lifecycle events      | Plugin                                                                       |
 | Guest tracking on public auth routes | Plugin (`payload.guestTracking`)                                             |
@@ -89,7 +90,21 @@ bunx payload generate:importmap
 | `enabled`        | —                                  | `false` registers nothing. Defaults to `true`.                                                    |
 | `payload`        | —                                  | Payload-specific options: `identify`, `guestTracking`, `support`, `capture`.                      |
 
-`payload.capture` exposes typed event-name and policy resolution options, but automatic Payload resource/activity event emitters are not implemented yet. It does not emit events. Do not rely on it for analytics until event coverage is listed here.
+`payload.capture` configures the implemented Admin read events: `collection_read`, `document_read`, and `global_read`. It does not capture mutations or general Admin activity.
+
+```ts
+PostHog({
+  apiKey: process.env.NEXT_PUBLIC_POSTHOG_KEY!,
+  payload: {
+    capture: {
+      collections: { defaults: { operations: ['listRead', 'read'] } },
+      globals: { defaults: false },
+    },
+  },
+})
+```
+
+Read events require a signed-in Admin identity and a classified resource route. Defaults enable eligible reads; use `defaults: false` to opt out by resource category. Event settings support custom names, properties, and deterministic `sampleRate` values.
 
 Option names, types and defaults follow the installed upstream types. See [PostHogConfig](https://posthog.com/docs/references/posthog-js/types/PostHogConfig), [PostHogOptions](https://posthog.com/docs/references/posthog-node/types/PostHogOptions) and the [`@posthog/next` reference](https://posthog.com/docs/libraries/next-js/posthog-next) for the full list.
 
@@ -146,7 +161,7 @@ payload: {
 
 Set `enabled: false` to turn both off for guests. Signed-in users are always tracked.
 
-Guest tracking does not control pageviews or browser exception capture. The default pageview tracker suppresses authentication, custom, sensitive, and queried routes. Autocapture runs only on routes the tracker classifies as safe. See [Privacy and security](#privacy-and-security).
+Guest tracking does not control pageviews or browser exception capture. The default pageview tracker suppresses authentication, custom, sensitive, and unsupported-query routes. Autocapture runs only on routes the tracker classifies as safe. See [Privacy and security](#privacy-and-security).
 
 ## Native PostHog APIs
 
@@ -193,9 +208,9 @@ Pageview ownership follows `clientOptions.capture_pageview`:
 | `'history_change'` | The SDK, for the initial load and history changes                             |
 | object form        | The SDK, using the object form of `capture_pageview` from `posthog-js`        |
 
-The default tracker strips query strings, hashes, and document IDs from pageview properties. It suppresses custom, authentication, sensitive, and queried routes. It enables autocapture only on classified safe routes. Explicitly setting `capture_pageview` opts out of these protections and returns pageview ownership to the native SDK.
+The default tracker strips query strings, hashes, and document IDs from pageview properties. It suppresses custom, authentication, sensitive, and queried routes. Numeric `depth` and `limit` parameters are allowed for safe Admin views but removed from pageview URLs; other query parameters suppress tracking. It enables autocapture only on classified safe routes. Explicitly setting `capture_pageview` opts out of these protections and returns pageview ownership to the native SDK.
 
-The plugin deduplicates repeated renders of the same route. Browser-level duplicate delivery and outbound URL privacy have not been verified in a live session.
+The plugin deduplicates repeated renders of the same route. A packed Next.js consumer emitted `$pageview` and `collection_read` to a local sink; the read event URL omitted `depth` and `limit`.
 
 ## Session Replay and Error Tracking
 
@@ -203,9 +218,9 @@ Use Session Replay and Error Tracking to reproduce reported problems, see what e
 
 **Session Replay:**
 
-- Recording starts only after the Admin user and route pass the plugin's privacy checks. Queried, sensitive, and unclassified routes stay unrecorded.
+- Recording starts only after the Admin user and route pass the plugin's privacy checks. Routes with unsupported query parameters, sensitive routes, and unclassified routes stay unrecorded.
 - Guest recordings follow `payload.guestTracking` and run only on configured guest routes.
-- All inputs are masked by default, and password inputs stay masked even if other masking options change.
+- The plugin configures all inputs to be masked by default, and password inputs stay masked even if other masking options change. Live Replay payload masking has not been verified.
 - Set `disable_session_recording: true` to keep Replay off.
 
 **Browser Error Tracking:** native `capture_exceptions` behavior follows `posthog-js` options.

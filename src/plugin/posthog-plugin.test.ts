@@ -32,6 +32,10 @@ describe('PostHog', () => {
       payload: {
         identify: { enabled: false },
         guestTracking: { enabled: false },
+        capture: {
+          collections: { defaults: false },
+          globals: { defaults: false },
+        },
       },
     })
 
@@ -51,6 +55,60 @@ describe('PostHog', () => {
         },
       })
     ).toThrow('payload.capture.collections.defaults.events.read')
+  })
+
+  it('forwards resolved read-view configuration and rejects callback values', () => {
+    expect(
+      providerEntry(
+        apply({
+          apiKey: 'phc_public',
+          payload: {
+            capture: {
+              prefix: 'cms_',
+              collections: {
+                overrides: {
+                  users: {
+                    events: { read: { name: 'post_opened', properties: { area: 'cms' } } },
+                  },
+                },
+              },
+            },
+          },
+        })
+      )
+    ).toMatchObject({
+      clientProps: {
+        adminViewCapture: {
+          collections: {
+            users: {
+              listRead: { name: 'cms_collection_read', enabled: true },
+              read: {
+                name: 'post_opened',
+                enabled: true,
+                properties: { area: 'cms' },
+              },
+            },
+          },
+        },
+      },
+    })
+
+    expect(() =>
+      apply({
+        apiKey: 'phc_public',
+        payload: {
+          capture: {
+            collections: {
+              defaults: {
+                events: {
+                  read: { properties: { callback: () => 'not serializable' } },
+                },
+              },
+            },
+          },
+        },
+      })
+    ).toThrow('payload.capture.collections.users.read.properties.callback must be serializable')
   })
 
   it('registers one native provider with native options passed through unchanged', () => {

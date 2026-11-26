@@ -2,7 +2,6 @@ export { payloadDistinctId } from '../identity/payload-distinct-id'
 export type {
   CaptureCategoryConfig,
   CaptureConfiguration,
-  CaptureEventContext,
   CaptureEventOptions,
   CaptureEventSetting,
   CaptureProperties,

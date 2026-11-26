@@ -1,5 +1,6 @@
 import type { BootstrapFlagsConfig } from '@posthog/next'
 import type { ReactNode } from 'react'
+import type { AdminViewCaptureConfig } from './capture-config'
 import { normalizeClientOptions } from './normalize-client-options'
 import type { PayloadPostHogOptions } from './types'
 
@@ -13,6 +14,7 @@ export type PostHogAdminProviderProps = {
   serverOptions?: NativeServerOptions
   bootstrapFlags?: boolean | BootstrapFlagsConfig
   identityCollection?: string
+  adminViewCapture: AdminViewCaptureConfig
   identify: { properties: Record<string, string> } | null
   guestTracking: { enabled: boolean; paths: string[] }
   support: { launcher: 'visible' | 'hidden'; endpoint: string } | null
@@ -46,6 +48,7 @@ export async function PostHogAdminProvider({
   serverOptions,
   bootstrapFlags = true,
   identityCollection,
+  adminViewCapture,
   identify,
   guestTracking,
   support,
@@ -76,6 +79,7 @@ export async function PostHogAdminProvider({
       <PostHogAdminClientTools
         identify={identify}
         identityCollection={identityCollection}
+        adminViewCapture={adminViewCapture}
         guestTracking={guestTracking}
         sessionReplay={clientOptions?.disable_session_recording !== true}
         support={support}

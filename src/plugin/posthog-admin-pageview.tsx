@@ -29,7 +29,9 @@ function PageViewTracker({
   autocapture: NonNullable<PostHogConfig['autocapture']>
 }) {
   const pathname = usePathname() ?? '/'
-  const search = useSearchParams().toString()
+  const searchParams = useSearchParams()
+  const search =
+    typeof window === 'undefined' ? searchParams.toString() : window.location.search.slice(1)
   const adminPath = useAdminPath()
   const posthog = usePostHog()
   const previousPage = useRef<string | null>(null)

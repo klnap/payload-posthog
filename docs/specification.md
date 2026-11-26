@@ -325,6 +325,20 @@ Every event and capability must be classified in the final coverage matrix as **
 
 Product Analytics and PostHog Activity Logs are best-effort, mutable analytics with product retention/access policies. They are not formal Security Audit Logs, immutable records, or tamper-proof evidence.
 
-### Initial implementation status
+### Current implementation and evidence
 
-The repository currently implements native Admin provider setup, privacy-filtered native `$pageview` events, safe-route autocapture gating, authenticated identity, guest route/auth-flow tracking, Session Replay route gating, authenticated Support, source-map re-export, and opt-in Next.js request-error instrumentation. Replay masks all inputs by default and always masks password input types. The capture configuration types and resolver exist, but no resource/activity event emitter consumes them yet; configuring `payload.capture` emits no events. Automatic resource reads, mutations, broader Admin activity, and Payload `afterError` integration remain unsupported. The pageview/autocapture guards lack live outbound telemetry verification.
+| Capability | Status | Evidence and limits |
+|---|---|---|
+| Native Admin provider, identity, Support, source-map re-export | Conditional | Unit, type, package, and export checks; behavior depends on host configuration and PostHog project settings. |
+| Native `$pageview` and safe-route autocapture gating | Verified / conditional | A packed Next.js consumer sent `$pageview` to a local sink. A synthetic `reset_token` URL produced no event. Explicit native `capture_pageview` opts out of the guard. |
+| `collection_read` | Verified / conditional | A packed consumer sent the event. The payload contained the collection slug and sanitized route; numeric `depth` and `limit` were absent from `$current_url`. Requires signed-in identity and a classified Admin route. |
+| `document_read` and `global_read` | Conditional | Route resolution and policy behavior have unit coverage; live outbound events have not been verified. |
+| Event sampling and configuration | Verified / conditional | Resolver, stable deterministic sampling, and focused tests pass. Runtime behavior follows the resolved policy and consent. |
+| Identity person properties | Verified / conditional | A packed consumer sent `$set` with a synthetic email identity. Identity reset and account-switch runtime transitions remain unverified. |
+| Session Replay route gating and input-mask configuration | Conditional | Unit coverage confirms route gates and mask defaults. No Replay payload was observed, so masking in actual snapshots is unverified. |
+| Next.js request-error instrumentation | Conditional / unverified | Hook composition and failure isolation have unit coverage. A local 500 and a manual helper call produced no observable server exception at the local sink. |
+| Authentication lifecycle events | Conditional | Implemented for supported Admin flows; live event delivery and outcome coverage remain unverified. |
+| Mutations, generic Payload operations, and broader Admin activity | Unsupported | No reliable public observation point proves Admin provenance and successful commit for these events. |
+| Payload `afterError` capture | Unsupported | Not implemented. |
+
+Runtime checks used synthetic data and a local loopback sink only; no production credentials or endpoint received test events.

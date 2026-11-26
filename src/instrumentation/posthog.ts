@@ -1,18 +1,28 @@
 import 'server-only'
 
 import type { OnRequestErrorOptions } from '@posthog/next'
-import { createOnRequestError } from '@posthog/next'
 import type { Instrumentation } from 'next'
 
 type RequestErrorHandler = Instrumentation.onRequestError
 
 let registration: Promise<RequestErrorHandler> | undefined
 
+const noOpRequestErrorHandler: RequestErrorHandler = async () => {}
+
 function getRequestErrorHandler(options?: OnRequestErrorOptions): Promise<RequestErrorHandler> {
-  registration ??= Promise.resolve().then(() =>
-    options === undefined ? createOnRequestError() : createOnRequestError(options)
-  )
+  if (!isNodeRuntime()) return Promise.resolve(noOpRequestErrorHandler)
+  registration ??= Promise.resolve()
+    .then(async () => {
+      const { createOnRequestError } = await import('@posthog/next')
+      return options === undefined ? createOnRequestError() : createOnRequestError(options)
+    })
+    .catch(() => noOpRequestErrorHandler)
   return registration
+}
+
+function isNodeRuntime(): boolean {
+  const runtime = typeof process !== 'undefined' ? process.env.NEXT_RUNTIME : undefined
+  return !runtime || runtime === 'nodejs'
 }
 
 /**
@@ -28,6 +38,10 @@ export async function registerPostHog(options?: OnRequestErrorOptions): Promise<
 export async function capturePostHogError(
   ...args: Parameters<Instrumentation.onRequestError>
 ): Promise<void> {
-  const handler = await getRequestErrorHandler()
-  await handler(...args)
+  try {
+    const handler = await getRequestErrorHandler()
+    await handler(...args)
+  } catch {
+    // Error telemetry must not change the host request's error handling.
+  }
 }
