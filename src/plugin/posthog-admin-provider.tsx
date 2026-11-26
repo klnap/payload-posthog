@@ -52,8 +52,12 @@ export async function PostHogAdminProvider({
   user,
 }: PostHogAdminProviderProps) {
   if (!apiKey) return <>{children}</>
-  const { PostHogPageView, PostHogProvider } = await import('@posthog/next')
-  const { PostHogAdminClientTools } = await import('./posthog-admin-client-tools')
+  const [{ PostHogProvider }, { PostHogAdminClientTools }, { PostHogAdminPageView }] =
+    await Promise.all([
+      import('@posthog/next'),
+      import('./posthog-admin-client-tools'),
+      import('./posthog-admin-pageview'),
+    ])
 
   // Omitted capture_pageview hands pageviews to PostHogPageView. Any explicit value stays with the SDK.
   const nativePageviews = clientOptions?.capture_pageview === undefined
@@ -65,7 +69,10 @@ export async function PostHogAdminProvider({
       serverOptions={serverOptions}
       clientOptions={normalizeClientOptions(clientOptions, support !== null)}
     >
-      {nativePageviews ? <PostHogPageView /> : null}
+      <PostHogAdminPageView
+        capturePageviews={nativePageviews}
+        autocapture={clientOptions?.autocapture ?? true}
+      />
       <PostHogAdminClientTools
         identify={identify}
         identityCollection={identityCollection}

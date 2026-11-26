@@ -29,17 +29,21 @@ export function PostHogAdminClientTools({
   return (
     <>
       {identify ? (
-        <PostHogIdentify
-          collection={identityCollection}
-          properties={identify.properties}
-          adminPath={adminPath}
-        />
+        <Suspense fallback={null}>
+          <PostHogIdentify
+            collection={identityCollection}
+            properties={identify.properties}
+            adminPath={adminPath}
+          />
+        </Suspense>
       ) : null}
-      <PostHogGuestTracking
-        adminPath={adminPath}
-        guestTracking={{ enabled: guestTracking.enabled, paths: guestPaths }}
-        sessionReplay={sessionReplay}
-      />
+      <Suspense fallback={null}>
+        <PostHogGuestTracking
+          adminPath={adminPath}
+          guestTracking={{ enabled: guestTracking.enabled, paths: guestPaths }}
+          sessionReplay={sessionReplay}
+        />
+      </Suspense>
       {support ? (
         <Suspense fallback={null}>
           <PostHogSupport

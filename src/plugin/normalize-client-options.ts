@@ -9,8 +9,10 @@ export function normalizeClientOptions(
 ): Partial<PostHogConfig> {
   return {
     ...clientOptions,
-    // Explicit false: PostHogPageView owns pageviews unless the host sets capture_pageview itself.
+    // Explicit false: the privacy-aware tracker owns pageviews unless the host sets capture_pageview itself.
     capture_pageview: clientOptions.capture_pageview ?? false,
+    // The route tracker enables autocapture only after classifying the current Admin route.
+    autocapture: false,
     // Hides URL hashes from captured URLs. Native default is off until defaults 2026-06-25.
     disable_capture_url_hashes: clientOptions.disable_capture_url_hashes ?? true,
     session_recording: {

@@ -7,13 +7,13 @@ describe('normalizeClientOptions', () => {
 
     expect(options).toMatchObject({
       capture_pageview: false,
+      autocapture: false,
       disable_capture_url_hashes: true,
       disable_conversations: true,
       session_recording: { maskAllInputs: true, maskInputOptions: { password: true } },
     })
     expect(options).not.toHaveProperty('save_referrer')
     expect(options).not.toHaveProperty('save_campaign_params')
-    expect(options).not.toHaveProperty('autocapture')
     expect(options).not.toHaveProperty('capture_exceptions')
     expect(options).not.toHaveProperty('disable_session_recording')
     expect(options).not.toHaveProperty('person_profiles')
@@ -42,6 +42,7 @@ describe('normalizeClientOptions', () => {
       api_host: 'https://events.example.test',
       disable_capture_url_hashes: false,
       save_referrer: true,
+      autocapture: false,
       disable_conversations: false,
       session_recording: { maskInputOptions: { password: true, email: true } },
     })

@@ -2,7 +2,7 @@
 
 import { useAuth } from '@payloadcms/ui'
 import { usePostHog } from '@posthog/next'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, useRef } from 'react'
 import { consumeAuthFlowAttempt, storeAuthFlowAttempt } from './auth-flow-attempt'
 import { isGuestRouteTracked, normalizeGuestRoute } from './guest-route-tracking'
@@ -34,12 +34,14 @@ export function PostHogGuestTracking({ adminPath, guestTracking, sessionReplay }
   const capturing =
     (posthog?.is_capturing() ?? false) && !(posthog?.has_opted_out_capturing() ?? true)
   const pathname = usePathname() ?? '/'
+  const search = useSearchParams().toString()
   const { user } = useAuth()
   const userId = currentUserId(user)
   const route = normalizeGuestRoute(pathname, adminPath)
   const guestAllowed =
     guestTracking.enabled && isGuestRouteTracked(pathname, adminPath, guestTracking.paths)
   const allowed = capturing && (userId !== null || guestAllowed)
+  const safeForRecording = !route.sensitive && !search
   const startedFlow = useRef<string | null>(null)
   const logoutWasStarted = useRef(false)
   const previousRoute = useRef<string | null>(null)
@@ -62,7 +64,7 @@ export function PostHogGuestTracking({ adminPath, guestTracking, sessionReplay }
 
   useEffect(() => {
     if (!posthog) return
-    const canRecord = sessionReplay && allowed
+    const canRecord = sessionReplay && allowed && safeForRecording
     if (canRecord) {
       if (!posthog.sessionRecordingStarted()) posthog.startSessionRecording()
     } else if (posthog.sessionRecordingStarted()) {
@@ -71,7 +73,7 @@ export function PostHogGuestTracking({ adminPath, guestTracking, sessionReplay }
     return () => {
       if (posthog.sessionRecordingStarted()) posthog.stopSessionRecording()
     }
-  }, [allowed, posthog, sessionReplay])
+  }, [allowed, posthog, safeForRecording, sessionReplay])
 
   useEffect(() => {
     if (!posthog || !capturing) {
