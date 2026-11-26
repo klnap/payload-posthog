@@ -7,6 +7,17 @@ export type AdminReadEvent = {
   view: 'list' | 'document' | 'global' | 'versions' | 'version'
 }
 
+export function hasAdminReadCapture(capture: AdminViewCaptureConfig): boolean {
+  return (
+    Object.values(capture.collections).some((resource) =>
+      Object.values(resource).some((event) => event.enabled)
+    ) ||
+    Object.values(capture.globals).some((resource) =>
+      Object.values(resource).some((event) => event.enabled)
+    )
+  )
+}
+
 export function resolveAdminReadEvent(
   routeTemplate: string,
   capture: AdminViewCaptureConfig

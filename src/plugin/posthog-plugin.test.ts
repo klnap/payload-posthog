@@ -13,6 +13,10 @@ const apply = (options: PayloadPostHogOptions, base: Config = config) =>
 
 const providerEntry = (result: Config) => result.admin?.components?.providers?.at(-1)
 
+// @ts-expect-error Internal extension constructors cannot cross Payload's serialized provider boundary.
+const extensionClasses: PayloadPostHogOptions['clientOptions'] = { __extensionClasses: {} }
+void extensionClasses
+
 describe('postHog', () => {
   it('exports the lower-camelCase factory without the old name', async () => {
     const exports = await import('../exports/index')

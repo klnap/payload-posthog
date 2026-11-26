@@ -78,6 +78,8 @@ Then regenerate Payload's import map so it can resolve the plugin's Admin provid
 bunx payload generate:importmap
 ```
 
+Place `postHog()` after plugins that add collections or globals. It resolves read-event coverage from resources present when Payload applies each plugin.
+
 ## Configuration
 
 `postHog(options)` takes these top-level options:
@@ -221,7 +223,7 @@ Use Session Replay and Error Tracking to reproduce reported problems, see what e
 
 **Session Replay:**
 
-- Recording starts only after the Admin user and route pass the plugin's privacy checks. Routes with unsupported query parameters, sensitive routes, and unclassified routes stay unrecorded.
+- Recording starts only for authenticated identities or enabled guest routes, and only when the route has no sensitive path segments or query parameters.
 - Guest recordings follow `payload.guestTracking` and run only on configured guest routes.
 - The plugin configures all inputs to be masked by default, and password inputs stay masked even if other masking options change. Live Replay payload masking has not been verified.
 - Set `disable_session_recording: true` to keep Replay off.
@@ -261,7 +263,7 @@ export const onRequestError = capturePostHogError
 
 The helper reads `NEXT_PUBLIC_POSTHOG_KEY` and `NEXT_PUBLIC_POSTHOG_HOST`. It uses `@posthog/next`'s separate cached Node client, not the client created from Payload's `serverOptions`. Exception details and request URLs are sanitized before capture. Next's request hook does not cover Proxy failures, build errors, or every caught exception.
 
-Session Replay can record visible Admin content. The default input mask reduces exposure but does not hide all text, images, or personal data.
+Campaign query parameters are not persisted or attached to later events (`save_campaign_params: false`). Session Replay can record visible Admin content. The default input mask reduces exposure but does not hide all text, images, or personal data.
 
 ## Authenticated Support
 

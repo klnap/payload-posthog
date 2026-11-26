@@ -1,10 +1,33 @@
 import { describe, expect, it } from 'bun:test'
-import { resolveAdminReadEvent, shouldSampleAdminRead } from './admin-read-tracking'
+import {
+  hasAdminReadCapture,
+  resolveAdminReadEvent,
+  shouldSampleAdminRead,
+} from './admin-read-tracking'
 import { resolveAdminViewCapture } from './capture-config'
 
 const capture = resolveAdminViewCapture(undefined, ['posts', 'annual report'], ['settings'])
 
 describe('resolveAdminReadEvent', () => {
+  it('keeps the identity provider mounted for any enabled collection or global read', () => {
+    const globalsOnly = resolveAdminViewCapture(
+      {
+        collections: { defaults: false },
+        globals: { defaults: false, overrides: { settings: { events: { versionRead: true } } } },
+      },
+      ['posts'],
+      ['settings']
+    )
+    expect(hasAdminReadCapture(globalsOnly)).toBe(true)
+
+    const disabled = resolveAdminViewCapture(
+      { collections: { defaults: false }, globals: { defaults: false } },
+      ['posts'],
+      ['settings']
+    )
+    expect(hasAdminReadCapture(disabled)).toBe(false)
+  })
+
   it('classifies list, document, global, and version routes without exposing version IDs', () => {
     expect(resolveAdminReadEvent('/collections/posts', capture)).toMatchObject({
       event: { name: 'collection_read' },

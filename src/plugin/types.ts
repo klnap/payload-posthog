@@ -7,6 +7,10 @@ type NativeOptions = Pick<
   PostHogProviderProps,
   'clientOptions' | 'serverOptions' | 'bootstrapFlags'
 >
+type SerializableClientOptions = Omit<
+  NonNullable<NativeOptions['clientOptions']>,
+  '__extensionClasses'
+>
 
 /**
  * Removes function-valued keys. Options cross the Payload server-to-client boundary as props,
@@ -20,7 +24,7 @@ export type PayloadPostHogOptions = {
   /** Set to false to register nothing. Defaults to true. */
   enabled?: boolean
   apiKey: string
-  clientOptions?: SerializableOptions<NonNullable<NativeOptions['clientOptions']>>
+  clientOptions?: SerializableOptions<SerializableClientOptions>
   serverOptions?: SerializableOptions<Partial<PostHogOptions>>
   /** Forwarded to `PostHogProvider`. Defaults to `true`. */
   bootstrapFlags?: NativeOptions['bootstrapFlags']

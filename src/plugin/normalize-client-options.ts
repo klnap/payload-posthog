@@ -13,6 +13,8 @@ export function normalizeClientOptions(
     capture_pageview: clientOptions.capture_pageview ?? false,
     // Native referrers can carry secrets from a previous URL.
     save_referrer: false,
+    // Campaign values can contain sensitive query parameters and persist across events.
+    save_campaign_params: false,
     // The route tracker enables autocapture only after classifying the current Admin route.
     autocapture: false,
     // Prevent an initial Replay snapshot before the route and user are classified.

@@ -52,6 +52,7 @@ Evidence: installed declarations and implementation under `node_modules/payload/
 - Next `onRequestError` does not cover Proxy failures in the inspected Next 16 API. It does not capture build/type errors or every caught exception.
 - Native Replay options support input masking. The package now defaults `maskAllInputs: true` and keeps password masking enabled even when the host changes other mask options. Hosts can explicitly set `maskAllInputs: false`; that weakens protection and requires application-level review. The provider API cannot accept client callbacks through serialized Payload props, so field-by-field unmasking is not currently supported.
 - Native referrer capture is disabled because a previous URL can carry a sensitive query value. Replay also masks all `[contenteditable]` text while preserving host `maskTextSelector` entries.
+- Native campaign parameter persistence is disabled because query values can be sensitive and would attach to later events.
 - Native browser Error Tracking can send exception messages unchanged when `capture_exceptions: true`; the plugin cannot serialize a `before_send` callback. Hosts must keep secrets out of browser error messages or leave this option disabled.
 - The native `@posthog/next` `PostHogPageView` captures the full current URL including query values. The default Admin tracker therefore emits the native `$pageview` name itself with a route template, strips query/hash and document IDs, and suppresses custom, auth, sensitive, and queried routes. It enables autocapture only on supported routes and disables it on unsafe routes. Explicit native `clientOptions.capture_pageview` opts out of this pageview guard.
 - Replay starts only after route, identity, and guest eligibility checks pass. Initialization disables recording before the first client effect; safe routes also require empty query strings.
@@ -214,7 +215,7 @@ PostHog-owned pageviews, pageleave, autocapture, Web Vitals, exceptions, Feature
 
 ## 6. Resource discovery, reads, and provenance
 
-- The plugin discovers host collections/globals from the final config it receives. Native plugin ordering can expose resources from earlier plugin transforms; late-added resources may be missed.
+- The plugin discovers host collections/globals from the config it receives when Payload applies it. Place `postHog()` after plugins that add resources; later additions are not discovered.
 - Admin route observation may support intentional list/document/global views when route identity is established from public routing and Payload config.
 - React rerenders and Strict Mode must not duplicate a single view. Revisiting can produce another read.
 - Prefetch, background fetches, relationship population, and public Website/API operations must not become Admin reads.

@@ -11,6 +11,7 @@ describe('normalizeClientOptions', () => {
       disable_session_recording: true,
       disable_capture_url_hashes: true,
       save_referrer: false,
+      save_campaign_params: false,
       disable_conversations: true,
       session_recording: {
         maskAllInputs: true,
@@ -18,7 +19,6 @@ describe('normalizeClientOptions', () => {
         maskTextSelector: '[contenteditable]',
       },
     })
-    expect(options).not.toHaveProperty('save_campaign_params')
     expect(options).not.toHaveProperty('capture_exceptions')
     expect(options).not.toHaveProperty('person_profiles')
     expect(options).not.toHaveProperty('advanced_disable_feature_flags_on_first_load')
@@ -36,6 +36,7 @@ describe('normalizeClientOptions', () => {
         api_host: 'https://events.example.test',
         disable_capture_url_hashes: false,
         save_referrer: true,
+        save_campaign_params: true,
         disable_conversations: false,
         session_recording: { maskInputOptions: { password: false, email: true } },
       },
@@ -46,6 +47,7 @@ describe('normalizeClientOptions', () => {
       api_host: 'https://events.example.test',
       disable_capture_url_hashes: false,
       save_referrer: false,
+      save_campaign_params: false,
       autocapture: false,
       disable_session_recording: true,
       disable_conversations: false,

@@ -1,6 +1,7 @@
 'use client'
 
 import { lazy, Suspense } from 'react'
+import { hasAdminReadCapture } from './admin-read-tracking'
 import type { AdminViewCaptureConfig } from './capture-config'
 import { usePayloadRoutes } from './payload-routes'
 import { PostHogGuestTracking } from './posthog-guest-tracking'
@@ -28,10 +29,7 @@ export function PostHogAdminClientTools({
   support,
 }: Props) {
   const { adminPath, guestPaths } = usePayloadRoutes(guestTracking.paths)
-  const hasReadCapture =
-    Object.values(adminViewCapture.collections).some((resource) =>
-      Object.values(resource).some((event) => event.enabled)
-    ) || Object.values(adminViewCapture.globals).some((resource) => resource.read.enabled)
+  const hasReadCapture = hasAdminReadCapture(adminViewCapture)
 
   return (
     <>

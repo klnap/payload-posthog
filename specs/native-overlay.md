@@ -4,7 +4,7 @@ Status: implemented. Owner: `@klnap/payload-posthog`.
 
 ## Goal
 
-Use PostHog as Next.js ships it. The plugin is a thin layer that makes `@posthog/next` work inside Payload Admin. It adds Payload wiring only: user identity, authentication lifecycle events, guest routes, and authenticated Support. It does not wrap, replace, or re-implement PostHog SDK behavior.
+Use PostHog as Next.js ships it. The plugin makes `@posthog/next` work inside Payload Admin. It adds Payload-specific identity, authentication lifecycle and resource-read events, privacy-aware pageview and autocapture gating, routed Payload error capture, guest-route Replay rules, and authenticated Support. It does not replace PostHog SDK behavior.
 
 ## Public API
 
@@ -25,12 +25,13 @@ postHog({
 
 - Option types come from the installed upstream types. Names and value sets are not redefined.
 - Function-valued options fail at config time (`... must be serializable`). They cannot cross the Payload server-to-client boundary. This includes `before_send`, `loaded`, and session-recording callbacks.
+- The internal `__extensionClasses` option is excluded because class constructors cannot cross that boundary.
 - `payload` holds only Payload-specific wiring. There are no feature switches, sanitizer options, or pageview modes in the plugin.
 
 ## Provider
 
 - The plugin mounts `PostHogProvider` from `@posthog/next` in Payload's Admin providers.
-- `normalizeClientOptions` sets only the defaults listed under Privacy. Every other option passes through.
+- `normalizeClientOptions` sets plugin privacy defaults and keeps other native options unless a privacy default must override them.
 - `bootstrapFlags` defaults to `true`, so flags are evaluated on the server for the signed-in user when a PostHog cookie exists.
 
 ## Pageviews
@@ -45,6 +46,8 @@ Owner follows `clientOptions.capture_pageview`:
 
 The plugin's default of `capture_pageview: false` prevents the SDK from adding its own pageviews when `PostHogPageView` is mounted. Duplicate-pageview behavior is not verified in a live browser.
 
+The default tracker allows numeric `depth` and `limit` parameters on classified Admin views, then removes them from pageview URLs. Other queried routes are suppressed. The tracker enables configured autocapture only on classified safe routes. Explicit native `capture_pageview` values return pageview ownership to the SDK and bypass the plugin's pageview guard.
+
 ## Identity
 
 - Signed-in users are identified as `<collection>:<id>`, with `email` mapped by default and `payload.identify.properties` adding mappings.
@@ -56,12 +59,12 @@ The plugin's default of `capture_pageview: false` prevents the SDK from adding i
 - Guest routes are Payload's public auth routes, read from `admin.routes`: `createFirstUser`, `forgot`, `inactivity`, `login`, `logout`, `reset`, `unauthorized`, plus `payload.guestTracking.paths`.
 - `payload.guestTracking` controls two things on guest routes: authentication lifecycle events (`auth_flow_started`, `auth_login_succeeded`, `auth_logout_started`, `auth_logout_completed`, `auth_account_switched`, `auth_session_expired`) and Session Replay.
 - `enabled: false` disables both for guests. Authenticated users are always tracked.
-- It does not control pageviews, autocapture, or exception capture. Those follow native configuration on every Admin page.
+- It does not control exception capture, which follows native configuration. The plugin's default tracker gates pageviews and autocapture by route; explicit native `capture_pageview` opts out of pageview guarding.
 - Auth events carry a `route_template` (sanitized route name), not the URL.
 
 ## Session Replay and Error Tracking
 
-- Recording follows the native `disable_session_recording` default. The plugin starts and stops it per the guest rules above.
+- Recording follows native `disable_session_recording`. The plugin starts it for authenticated identities or eligible guest routes only when the route has no sensitive path segments or query parameters.
 - Password inputs are masked (`maskInputOptions.password: true`).
 - `maskAllInputs` defaults to `true`; passwords stay masked even if the host weakens this option.
 - `[contenteditable]` is always included in `maskTextSelector`; host selectors are preserved.
@@ -73,12 +76,13 @@ Plugin-set defaults:
 
 - `disable_capture_url_hashes: true`.
 - `save_referrer: false` prevents previous URLs from carrying sensitive query values.
+- `save_campaign_params: false` prevents campaign query values from persisting and attaching to later events.
 - `session_recording.maskInputOptions.password: true`.
 - `session_recording.maskAllInputs: true`.
 - `session_recording.maskTextSelector` includes `[contenteditable]`.
 - `disable_conversations` follows whether Support is configured.
 
-Native and not changed: `save_campaign_params`, autocapture, exception capture, consent, persistence, feature flags.
+Native and not changed: exception capture, consent, persistence, feature flags. Autocapture uses native options behind the plugin route gate.
 
 Not provided:
 
