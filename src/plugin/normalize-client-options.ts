@@ -11,6 +11,8 @@ export function normalizeClientOptions(
     ...clientOptions,
     // Explicit false: the privacy-aware tracker owns pageviews unless the host sets capture_pageview itself.
     capture_pageview: clientOptions.capture_pageview ?? false,
+    // Native referrers can carry secrets from a previous URL.
+    save_referrer: false,
     // The route tracker enables autocapture only after classifying the current Admin route.
     autocapture: false,
     // Prevent an initial Replay snapshot before the route and user are classified.
@@ -19,6 +21,10 @@ export function normalizeClientOptions(
     disable_capture_url_hashes: clientOptions.disable_capture_url_hashes ?? true,
     session_recording: {
       ...clientOptions.session_recording,
+      // Editable content can contain sensitive values outside native form controls.
+      maskTextSelector: [clientOptions.session_recording?.maskTextSelector, '[contenteditable]']
+        .filter(Boolean)
+        .join(', '),
       // Fail closed for unclassified inputs; the host can explicitly choose a native policy.
       maskAllInputs: clientOptions.session_recording?.maskAllInputs ?? true,
       // Passwords remain protected even when the host overrides other input masking options.

@@ -82,6 +82,41 @@ describe('resolveSafeAdminPageview', () => {
     ).toBeNull()
   })
 
+  it('attaches only numeric document and version IDs as read-event metadata', () => {
+    expect(
+      resolveSafeAdminPageview(
+        '/admin/collections/projects/123',
+        '',
+        '/admin',
+        'https://cms.example.test'
+      )
+    ).toMatchObject({ documentId: '123' })
+    expect(
+      resolveSafeAdminPageview(
+        '/admin/collections/projects/123/versions/456',
+        '',
+        '/admin',
+        'https://cms.example.test'
+      )
+    ).toMatchObject({ documentId: '123', versionId: '456' })
+    expect(
+      resolveSafeAdminPageview(
+        '/admin/globals/site-settings/versions/456',
+        '',
+        '/admin',
+        'https://cms.example.test'
+      )
+    ).toMatchObject({ versionId: '456' })
+    expect(
+      resolveSafeAdminPageview(
+        '/admin/collections/projects/secret-document-id',
+        '',
+        '/admin',
+        'https://cms.example.test'
+      )
+    ).not.toHaveProperty('documentId')
+  })
+
   it.each([
     ['/admin/login', '', '/admin'],
     ['/admin/collections/projects', 'reset_token=canary', '/admin'],

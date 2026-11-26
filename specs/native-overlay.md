@@ -63,7 +63,8 @@ The plugin's default of `capture_pageview: false` prevents the SDK from adding i
 
 - Recording follows the native `disable_session_recording` default. The plugin starts and stops it per the guest rules above.
 - Password inputs are masked (`maskInputOptions.password: true`).
-- `maskAllInputs` defaults to `false`. This is a deliberate plugin default, so only passwords are masked. Email addresses and one-time codes are recorded unless the host sets `session_recording.maskAllInputs: true`.
+- `maskAllInputs` defaults to `true`; passwords stay masked even if the host weakens this option.
+- `[contenteditable]` is always included in `maskTextSelector`; host selectors are preserved.
 - `capture_exceptions` is native (on by default in the Next.js provider).
 
 ## Privacy
@@ -71,15 +72,18 @@ The plugin's default of `capture_pageview: false` prevents the SDK from adding i
 Plugin-set defaults:
 
 - `disable_capture_url_hashes: true`.
+- `save_referrer: false` prevents previous URLs from carrying sensitive query values.
 - `session_recording.maskInputOptions.password: true`.
-- `session_recording.maskAllInputs: false` (see above).
+- `session_recording.maskAllInputs: true`.
+- `session_recording.maskTextSelector` includes `[contenteditable]`.
 - `disable_conversations` follows whether Support is configured.
 
-Native and not changed: `save_referrer`, `save_campaign_params`, autocapture, exception capture, consent, persistence, feature flags.
+Native and not changed: `save_campaign_params`, autocapture, exception capture, consent, persistence, feature flags.
 
 Not provided:
 
-- No URL sanitizer. Query strings and path segments (reset and invitation tokens) reach PostHog in pageviews, autocapture, exceptions, and replay.
+- No universal URL sanitizer. The default Admin pageview tracker suppresses queried routes and removes query strings; explicitly setting native `capture_pageview` opts out.
+- Native referrer capture is disabled because a previous route can contain sensitive query values.
 - No `before_send` through the plugin, because callbacks are rejected. Hosts cannot scrub events through the plugin.
 - No runtime SDK mutations, monkeypatches, or custom persistence cleanup.
 

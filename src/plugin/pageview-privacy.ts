@@ -1,9 +1,11 @@
 import { isSafeAdminContentRoute, normalizeGuestRoute } from './guest-route-tracking'
 
 export type SafeAdminPageview = {
+  documentId?: string
   pathname: string
   resourceRoute: string | null
   url: string
+  versionId?: string
 }
 
 export function resolveSafeAdminPageview(
@@ -32,14 +34,28 @@ export function resolveSafeAdminPageview(
   const safePath = `${prefix}${base === '/' ? '' : base}${route.pathname}`
   try {
     const url = new URL(safePath, origin)
+    const segments = routePath.split('/').filter(Boolean)
+    const documentId = segments[0] === 'collections' ? numericIdentifier(segments[2]) : undefined
+    const versionId =
+      segments[0] === 'collections' && segments[3] === 'versions'
+        ? numericIdentifier(segments[4])
+        : segments[0] === 'globals' && segments[2] === 'versions'
+          ? numericIdentifier(segments[3])
+          : undefined
     return {
       pathname: route.pathname,
       resourceRoute: resolveResourceRoute(routePath),
       url: url.origin + url.pathname,
+      ...(documentId ? { documentId } : {}),
+      ...(versionId ? { versionId } : {}),
     }
   } catch {
     return null
   }
+}
+
+function numericIdentifier(segment: string | undefined): string | undefined {
+  return segment && /^\d+$/.test(segment) ? segment : undefined
 }
 
 function resolveResourceRoute(routePath: string): string | null {

@@ -51,11 +51,13 @@ Evidence: installed declarations and implementation under `node_modules/payload/
 - `posthog-js` and `posthog-node` expose native `captureException`; `@posthog/next` exposes request-error capture helpers. Its request handler supports server-side `beforeCapture`, disablement, and cookie-based consent; local-storage-only opt-out is not visible server-side.
 - Next `onRequestError` does not cover Proxy failures in the inspected Next 16 API. It does not capture build/type errors or every caught exception.
 - Native Replay options support input masking. The package now defaults `maskAllInputs: true` and keeps password masking enabled even when the host changes other mask options. Hosts can explicitly set `maskAllInputs: false`; that weakens protection and requires application-level review. The provider API cannot accept client callbacks through serialized Payload props, so field-by-field unmasking is not currently supported.
+- Native referrer capture is disabled because a previous URL can carry a sensitive query value. Replay also masks all `[contenteditable]` text while preserving host `maskTextSelector` entries.
+- Native browser Error Tracking can send exception messages unchanged when `capture_exceptions: true`; the plugin cannot serialize a `before_send` callback. Hosts must keep secrets out of browser error messages or leave this option disabled.
 - The native `@posthog/next` `PostHogPageView` captures the full current URL including query values. The default Admin tracker therefore emits the native `$pageview` name itself with a route template, strips query/hash and document IDs, and suppresses custom, auth, sensitive, and queried routes. It enables autocapture only on supported routes and disables it on unsafe routes. Explicit native `clientOptions.capture_pageview` opts out of this pageview guard.
 - Replay starts only after route, identity, and guest eligibility checks pass. Initialization disables recording before the first client effect; safe routes also require empty query strings.
 - Existing SDK consent checks gate browser identity and Support. Server error consent requires the relevant opt-out cookie and is independently configured.
 
-Context7 documentation lookup was attempted but the service returned its monthly quota limit. These decisions use the installed package source/declarations and repository code; Next `16.4.5` itself remains unverified.
+Context7 documentation lookup hit its monthly quota. Decisions use installed package source/declarations and repository code; the packed consumer was runtime-tested with Next `16.4.5`.
 
 ## 3. Public contract
 
@@ -255,7 +257,7 @@ Mandatory credential protection covers passwords (including revealed values), OT
 - The sole package instrumentation exports are `registerPostHog` and `capturePostHogError`. The host owns `instrumentation.ts` and composes them with other instrumentation.
 - Error Tracking is independent of Admin Product Analytics scope. Capture unexpected errors through native request-error handlers and Payload `afterError` where safe; filter expected validation/access/not-found/business errors by default where context allows.
 - Error capture must not alter responses, exception propagation, startup, or CMS outcomes. Coverage is limited to verified runtimes and paths; caught errors require native manual capture.
-- Payload error hooks await the native immediate-capture attempt to reduce serverless loss; failures are swallowed, but error responses may wait for the SDK timeout.
+- Payload error hooks await one native immediate-capture attempt to reduce serverless loss; the default timeout is 2 seconds with no retries. Failures are swallowed; `serverOptions` can override both limits.
 - Instrumentation uses explicit/environment-based configuration, idempotent initialization, and native bounded delivery. No OpenTelemetry or proprietary global registry.
 
 The official host composition target is:
@@ -284,7 +286,7 @@ export const onRequestError: Instrumentation.onRequestError =
 - Payload exposes no generic semantic Admin event bus. DOM clicks, field edits, validation UI, and arbitrary custom views cannot be captured reliably through a public universal observer.
 - Generic collection hooks cannot prove Admin provenance or transaction commit. Automatic mutation success events are suppressed unless a supported view/workflow integration establishes both.
 - Browser callback functions cannot cross the Payload server/client provider props. The proposed `clientConfig` module-reference API is not part of the public contract until a real import-map/client initialization path is proven.
-- Field-by-field Replay unmasking is not currently supported. The safe default masks all form inputs, so ordinary editable values are not visible in recordings unless a host explicitly weakens the native masking policy.
+- Field-by-field Replay unmasking is not currently supported. The safe default masks all form inputs and `[contenteditable]` text, so ordinary editable values are not visible in recordings unless a host explicitly weakens the native input-masking policy.
 - Native Node SDK clients are separately owned by Payload's provider integration and Next instrumentation; no injected-client API was found. The design must avoid unnecessary third clients and disclose configuration ownership.
 - Next 16 request-error instrumentation does not report Proxy failures through the inspected handler.
 - Payload plugin order/`RegisteredPlugins` typing is experimental in the verified version. Ordering is a discovery convention, not a guarantee against later plugins.
@@ -332,17 +334,18 @@ Product Analytics and PostHog Activity Logs are best-effort, mutable analytics w
 | Capability | Status | Evidence and limits |
 |---|---|---|
 | Native Admin provider, identity, Support, source-map re-export | Conditional | Unit, type, package, and export checks; behavior depends on host configuration and PostHog project settings. |
-| Native `$pageview` and safe-route autocapture gating | Verified / conditional | A packed Next.js consumer sent `$pageview` to a local sink. A synthetic `reset_token` URL produced no event. Explicit native `capture_pageview` opts out of the guard. |
+| Native `$pageview` and safe-route autocapture gating | Verified / conditional | A packed Next.js consumer sent `$pageview` to a local sink. A sensitive-query route produced no event; a subsequent safe route omitted the prior query URL from `$referrer`. Explicit native `capture_pageview` opts out of the route guard. |
 | `collection_read` | Verified / conditional | A packed consumer sent the event. The payload contained the collection slug and sanitized route; numeric `depth` and `limit` were absent from `$current_url`. Requires signed-in identity and a classified Admin route. |
-| `document_read` and `global_read` | Conditional | Route resolution and policy behavior have unit coverage; live outbound events have not been verified. |
-| Version history/detail reads | Conditional | Payload collection routes `/collections/{slug}/{id}/versions[/<versionID>]` and global routes `/globals/{slug}/versions[/<versionID>]` are classified and unit-tested. IDs are omitted; live outbound events have not been verified. |
+| `document_read` and `global_read` | Verified / conditional | A packed consumer sent both events to the local sink with collection/global slugs and route templates. Numeric document IDs appear separately as `document_id`; opaque IDs stay omitted. |
+| Version history/detail reads | Verified / conditional | A packed consumer sent `document_versions_read`, `document_version_read`, `global_versions_read`, and `global_version_read` to the local sink. Route URLs retain neither ID; numeric document/version IDs use separate event properties. Opaque IDs stay omitted. |
 | Event sampling and configuration | Verified / conditional | Resolver, stable deterministic sampling, and focused tests pass. Runtime behavior follows the resolved policy and consent. |
-| Identity person properties | Verified / conditional | A packed consumer sent `$set` with a synthetic email identity. Identity reset and account-switch runtime transitions remain unverified. |
-| Session Replay route gating and input-mask configuration | Conditional | Unit coverage confirms route gates and mask defaults. No Replay payload was observed, so masking in actual snapshots is unverified. |
+| Identity person properties | Verified / conditional | A packed consumer sent `$set` for synthetic user `users:2`. A stale persisted `users:1` identity reset to anonymous on the login route; login and logout transitions returned the correct browser identity state. |
+| Session Replay route gating and input-mask configuration | Verified / conditional | A packed consumer sent real `$snapshot` payloads to the local sink. Password, OTP, API-key, `.ph-mask`, `.ph-no-capture`, `.custom-sensitive`, and `[contenteditable]` canaries were absent. Ordinary unmarked text remained visible. A sensitive-query route produced no snapshot. Broader identity transitions remain conditional. |
+| Browser Error Tracking | Conditional / host-reviewed | With explicit native `capture_exceptions: true`, a synthetic browser exception message reached the local sink unchanged. Browser `before_send` cannot cross Payload's provider boundary; hosts must keep secrets out of browser error messages. |
 | Next.js request-error instrumentation | Verified / conditional | A packed consumer sent a synthetic App Router exception to the local `/batch` sink. The error message and query-token canaries were absent. Proxy failures and caught errors remain uncovered. |
-| Authentication lifecycle events | Conditional | Flow starts, recent login transitions, logout, account switches, and observed session expiry are implemented. Login failure, password-reset, activation, and verification outcomes need host callbacks. Live lifecycle delivery remains unverified. |
+| Authentication lifecycle events | Verified / conditional | The local sink received `auth_flow_started`, `auth_login_succeeded`, `auth_logout_started`, and `auth_logout_completed`. Login failure, password-reset, activation, verification, and account-switch event semantics remain conditional on supported host flows. |
 | Admin mutations | Unsupported automatically | Collection hooks cannot prove Admin provenance or committed success; native action components expose no shared public completion callback. |
 | Generic Admin activity | Manual/native | Payload has no generic semantic event bus. Hosts can use public UI hooks and native PostHog capture for selected activity; this plugin does not emit these events. |
-| Payload `afterError` capture | Verified / conditional | A synthetic thrown REST endpoint returned the same HTTP 500 response and sent one `$exception` to the local `/batch` sink. The exception value and message canary were absent. HTTP 4xx suppression has unit coverage. Root hooks do not establish GraphQL coverage; caught errors remain host-owned. Immediate capture can delay the error response. |
+| Payload `afterError` capture | Verified / conditional | A synthetic thrown REST endpoint preserved HTTP 500 when the local `/batch` sink returned 503 or exceeded the 2-second request timeout. Three concurrent failures also preserved HTTP 500. Payload exception message canaries were absent. A synthetic 404 returned 404 in 43ms and produced no telemetry. GraphQL and caught-error coverage remain unverified. |
 
 Runtime checks used synthetic data and a local loopback sink only; no production credentials or endpoint received test events.

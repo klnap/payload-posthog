@@ -46,6 +46,11 @@ function PageViewTracker({
   useEffect(() => {
     if (!posthog) return
 
+    // Clear referrers persisted before the privacy default took effect.
+    posthog.unregister('$referrer')
+    posthog.unregister('$referring_domain')
+    posthog.unregister_for_session('$referrer')
+    posthog.unregister_for_session('$referring_domain')
     posthog.set_config({ autocapture: pageview ? autocapture : false })
     if (!pageview || !capturePageviews) {
       previousPage.current = null

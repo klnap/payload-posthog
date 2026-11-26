@@ -53,6 +53,8 @@ export function createPayloadAfterErrorHook({
           : []
         return new PostHog(apiKey, {
           ...serverOptions,
+          fetchRetryCount: serverOptions?.fetchRetryCount ?? 0,
+          requestTimeout: serverOptions?.requestTimeout ?? 2_000,
           before_send: [...beforeSendHandlers, (event) => sanitizeExceptionEvent(event)],
         })
       })

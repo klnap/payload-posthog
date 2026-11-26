@@ -58,7 +58,8 @@ export function PostHogIdentify({
       posthog,
       { id: previousId.current, propertiesKey: previousPropertiesKey.current },
       identityEnabled && canIdentify && safeRoute ? userId : null,
-      personProperties
+      personProperties,
+      collection ?? ''
     )
     previousId.current = next.id
     previousPropertiesKey.current = next.propertiesKey
@@ -101,11 +102,14 @@ export function PostHogIdentify({
       ...(readEvent.resourceType === 'collection'
         ? { collection: readEvent.resourceSlug }
         : { global: readEvent.resourceSlug }),
+      ...(safePageview.documentId ? { document_id: safePageview.documentId } : {}),
+      ...(safePageview.versionId ? { version_id: safePageview.versionId } : {}),
     })
   }, [
     adminPath,
     adminViewCapture,
     canIdentify,
+    collection,
     identityEnabled,
     pathname,
     personProperties,

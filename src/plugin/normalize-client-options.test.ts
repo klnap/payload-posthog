@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { normalizeClientOptions } from './normalize-client-options'
 
 describe('normalizeClientOptions', () => {
-  it('sets only the explicit plugin defaults and leaves native defaults alone', () => {
+  it('sets plugin defaults and preserves native defaults except privacy-sensitive referrers', () => {
     const options = normalizeClientOptions({}, false)
 
     expect(options).toMatchObject({
@@ -10,10 +10,14 @@ describe('normalizeClientOptions', () => {
       autocapture: false,
       disable_session_recording: true,
       disable_capture_url_hashes: true,
+      save_referrer: false,
       disable_conversations: true,
-      session_recording: { maskAllInputs: true, maskInputOptions: { password: true } },
+      session_recording: {
+        maskAllInputs: true,
+        maskInputOptions: { password: true },
+        maskTextSelector: '[contenteditable]',
+      },
     })
-    expect(options).not.toHaveProperty('save_referrer')
     expect(options).not.toHaveProperty('save_campaign_params')
     expect(options).not.toHaveProperty('capture_exceptions')
     expect(options).not.toHaveProperty('person_profiles')
@@ -41,12 +45,24 @@ describe('normalizeClientOptions', () => {
     expect(options).toMatchObject({
       api_host: 'https://events.example.test',
       disable_capture_url_hashes: false,
-      save_referrer: true,
+      save_referrer: false,
       autocapture: false,
       disable_session_recording: true,
       disable_conversations: false,
-      session_recording: { maskInputOptions: { password: true, email: true } },
+      session_recording: {
+        maskInputOptions: { password: true, email: true },
+        maskTextSelector: '[contenteditable]',
+      },
     })
+  })
+
+  it('preserves host text selectors while always masking editable content', () => {
+    expect(
+      normalizeClientOptions(
+        { session_recording: { maskTextSelector: '.custom-sensitive' } },
+        false
+      ).session_recording
+    ).toMatchObject({ maskTextSelector: '.custom-sensitive, [contenteditable]' })
   })
 
   it('enables Conversations by default only when Support is configured', () => {

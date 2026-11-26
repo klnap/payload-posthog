@@ -10,7 +10,7 @@ A standard PostHog install does not know Payload. Admin is its own React tree wi
 | ------------------------------------ | ---------------------------------------------------------------------------- |
 | Product analytics and autocapture    | Native `posthog-js`; autocapture runs only on classified safe Admin routes   |
 | Pageviews                            | Privacy-aware route tracker (see [Pageviews](#pageviews))                    |
-| Admin resource reads                 | Plugin; lists, documents, globals, and version views                          |
+| Admin resource reads                 | Plugin; lists, documents, globals, and version views                         |
 | Automatic user identification        | Plugin                                                                       |
 | Authentication lifecycle events      | Plugin                                                                       |
 | Guest tracking on public auth routes | Plugin (`payload.guestTracking`)                                             |
@@ -92,6 +92,8 @@ bunx payload generate:importmap
 | `payload`        | —                                  | Payload-specific options: `identify`, `guestTracking`, `support`, `capture`, `errorTracking`.     |
 
 `payload.capture` configures Admin list, document, global, and version-view events: `collection_read`, `document_read`, `global_read`, `document_versions_read`, `document_version_read`, `global_versions_read`, and `global_version_read`. It does not capture mutations or general Admin activity.
+
+Read events use route placeholders in `$current_url`. Numeric document and version IDs appear in separate properties; opaque IDs stay omitted.
 
 ```ts
 PostHog({
@@ -211,7 +213,7 @@ Pageview ownership follows `clientOptions.capture_pageview`:
 
 The default tracker strips query strings, hashes, and document IDs from pageview properties. It suppresses custom, authentication, sensitive, and queried routes. Numeric `depth` and `limit` parameters are allowed for safe Admin views but removed from pageview URLs; other query parameters suppress tracking. It enables autocapture only on classified safe routes. Explicitly setting `capture_pageview` opts out of these protections and returns pageview ownership to the native SDK.
 
-The plugin deduplicates repeated renders of the same route. A packed Next.js consumer emitted `$pageview` and `collection_read` to a local sink; the read event URL omitted `depth` and `limit`.
+The plugin deduplicates repeated renders of the same route. A packed Next.js consumer emitted `$pageview` and `collection_read` to a local sink; read URLs omitted `depth` and `limit`, and referrers omitted a previous credential-query URL.
 
 ## Session Replay and Error Tracking
 
@@ -224,7 +226,7 @@ Use Session Replay and Error Tracking to reproduce reported problems, see what e
 - The plugin configures all inputs to be masked by default, and password inputs stay masked even if other masking options change. Live Replay payload masking has not been verified.
 - Set `disable_session_recording: true` to keep Replay off.
 
-**Browser Error Tracking:** native `capture_exceptions` behavior follows `posthog-js` options.
+**Browser Error Tracking:** native `capture_exceptions` behavior follows `posthog-js` options. With `capture_exceptions: true`, a synthetic exception message reached the local sink unchanged; this plugin cannot pass a browser `before_send` callback. Enable it only when host errors cannot contain secrets.
 
 **Payload routed errors:** unexpected errors handled by Payload's root `afterError` hook are captured by default. HTTP 4xx errors are suppressed. Disable this integration with `payload.errorTracking.enabled: false`, or add a server-side filter:
 
@@ -242,7 +244,7 @@ PostHog({
 
 The filter cannot enable HTTP 4xx capture. Error messages, exception values, request URLs, and full file paths are removed before delivery. Stack frames retain only safe function names, line numbers, and file basenames. This hook covers errors that reach Payload's routed REST error handler; it does not prove coverage for GraphQL or caught errors.
 
-Payload awaits the native SDK's immediate send attempt to reduce event loss in short-lived serverless processes. This can delay an error response; SDK failures never replace the Payload response.
+Payload awaits one immediate send attempt to reduce event loss in short-lived serverless processes. The default request timeout is 2 seconds with no retries; `serverOptions.requestTimeout` and `serverOptions.fetchRetryCount` override these limits. SDK failures never replace the Payload response.
 
 **Next.js request errors:** opt in from the host's single `instrumentation.ts` file:
 
@@ -332,13 +334,17 @@ export default withPostHogConfig(nextConfig, {
 The plugin applies privacy guards before its own Admin pageview and autocapture events. It also sets these native defaults:
 
 - `disable_capture_url_hashes: true` removes `#fragments` from captured URLs.
+- `save_referrer: false` prevents a previous URL from leaking sensitive query values.
 - `session_recording.maskInputOptions.password: true` masks password inputs.
 - `session_recording.maskAllInputs: true` masks all input values by default.
+- `session_recording.maskTextSelector` always includes `[contenteditable]` while preserving host selectors.
 - `disable_conversations` follows whether Support is configured.
 
-The native defaults `save_referrer` and `save_campaign_params` are not changed. The referrer can contain the previous page's URL.
+The native `save_campaign_params` default is unchanged.
 
 > **Warning:** Native capture paths can still include sensitive data. Setting `clientOptions.capture_pageview` explicitly opts out of the plugin's safe pageview tracker. Native autocapture behavior is gated by route classification, but exception messages and Replay content need application-level review.
+
+Replay masks form controls, editable content, and native marked regions. Ordinary unmarked text remains visible; do not render credentials as unmarked text.
 
 The plugin's switches cannot prevent this on their own:
 
