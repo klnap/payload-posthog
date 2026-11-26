@@ -51,12 +51,12 @@ Node `^24.22.3 || >=26.13.1`.
 
 ```ts
 // payload.config.ts
-import { PostHog } from '@klnap/payload-posthog'
+import { postHog } from '@klnap/payload-posthog'
 import { buildConfig } from 'payload'
 
 export default buildConfig({
   plugins: [
-    PostHog({
+    postHog({
       apiKey: process.env.NEXT_PUBLIC_POSTHOG_KEY!,
       clientOptions: {
         api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
@@ -80,7 +80,7 @@ bunx payload generate:importmap
 
 ## Configuration
 
-`PostHog(options)` takes these top-level options:
+`postHog(options)` takes these top-level options:
 
 | Option           | Forwarded to                       | Notes                                                                                             |
 | ---------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------- |
@@ -96,7 +96,7 @@ bunx payload generate:importmap
 Read events use route placeholders in `$current_url`. Numeric document and version IDs appear in separate properties; opaque IDs stay omitted.
 
 ```ts
-PostHog({
+postHog({
   apiKey: process.env.NEXT_PUBLIC_POSTHOG_KEY!,
   payload: {
     capture: {
@@ -114,7 +114,7 @@ Option names, types and defaults follow the installed upstream types. See [PostH
 A typical configuration sets only what you need:
 
 ```ts
-PostHog({
+postHog({
   apiKey: process.env.NEXT_PUBLIC_POSTHOG_KEY!,
   clientOptions: {
     api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
@@ -231,7 +231,7 @@ Use Session Replay and Error Tracking to reproduce reported problems, see what e
 **Payload routed errors:** unexpected errors handled by Payload's root `afterError` hook are captured by default. HTTP 4xx errors are suppressed. Disable this integration with `payload.errorTracking.enabled: false`, or add a server-side filter:
 
 ```ts
-PostHog({
+postHog({
   apiKey: process.env.NEXT_PUBLIC_POSTHOG_KEY!,
   payload: {
     errorTracking: {
@@ -268,7 +268,7 @@ Session Replay can record visible Admin content. The default input mask reduces 
 PostHog Support gives signed-in editors a conversation with your team from the Admin. The plugin verifies identity on the server, so no one can open a conversation as another user.
 
 ```ts
-PostHog({
+postHog({
   apiKey: process.env.NEXT_PUBLIC_POSTHOG_KEY!,
   payload: {
     support: {

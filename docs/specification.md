@@ -64,12 +64,12 @@ Context7 documentation lookup hit its monthly quota. Decisions use installed pac
 The minimal integration remains:
 
 ```ts
-import { PostHog } from '@klnap/payload-posthog'
+import { postHog } from '@klnap/payload-posthog'
 import { buildConfig } from 'payload'
 
 export default buildConfig({
   plugins: [
-    PostHog({
+    postHog({
       apiKey: process.env.NEXT_PUBLIC_POSTHOG_KEY!,
     }),
   ],
@@ -79,7 +79,7 @@ export default buildConfig({
 The intended top-level contract is:
 
 ```ts
-PostHog({
+postHog({
   apiKey,
   enabled,
   debug,

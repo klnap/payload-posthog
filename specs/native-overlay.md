@@ -9,7 +9,7 @@ Use PostHog as Next.js ships it. The plugin is a thin layer that makes `@posthog
 ## Public API
 
 ```ts
-PostHog({
+postHog({
   apiKey: string,                          // required, project API key
   enabled?: boolean,                       // false registers nothing; default true
   clientOptions?: Partial<PostHogConfig>,  // native posthog-js options; no function values
@@ -98,7 +98,7 @@ Mitigations available: `capture_pageview: false`, `disable_session_recording: tr
 
 ## Source maps
 
-Build-time only, through `withPostHogConfig` re-exported from `@klnap/payload-posthog/next-config`. Requires `@posthog/nextjs-config`. Source-map credentials are not part of `PostHog()`.
+Build-time only, through `withPostHogConfig` re-exported from `@klnap/payload-posthog/next-config`. Requires `@posthog/nextjs-config`. Source-map credentials are not part of `postHog()`.
 
 ## Non-goals
 

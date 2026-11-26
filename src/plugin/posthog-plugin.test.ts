@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import type { Config } from 'payload'
-import { type PayloadPostHogOptions, PostHog } from '../exports/index'
+import { type PayloadPostHogOptions, postHog } from '../exports/index'
 import { POSTHOG_SUPPORT_IDENTITY_PATH } from '../support/payload-identity-endpoint'
 
 const config = {
@@ -9,11 +9,17 @@ const config = {
 } as Config
 
 const apply = (options: PayloadPostHogOptions, base: Config = config) =>
-  PostHog(options)(base) as Config
+  postHog(options)(base) as Config
 
 const providerEntry = (result: Config) => result.admin?.components?.providers?.at(-1)
 
-describe('PostHog', () => {
+describe('postHog', () => {
+  it('exports the lower-camelCase factory without the old name', async () => {
+    const exports = await import('../exports/index')
+    expect(exports.postHog).toBeTypeOf('function')
+    expect('PostHog' in exports).toBe(false)
+  })
+
   it('registers nothing without an API key', () => {
     expect(apply({ apiKey: '' })).toBe(config)
   })

@@ -10,5 +10,5 @@ export type {
   GlobalCaptureSettings,
   GlobalEventName,
 } from '../plugin/capture-config'
-export { PostHog } from '../plugin/posthog-plugin'
+export { postHog } from '../plugin/posthog-plugin'
 export type { PayloadPostHogOptions } from '../plugin/types'

@@ -11,7 +11,7 @@ import type { PayloadPostHogOptions } from './types'
 
 const PROVIDER = '@klnap/payload-posthog/admin#PostHogAdminProvider'
 
-export function PostHog(options: PayloadPostHogOptions): Plugin {
+export function postHog(options: PayloadPostHogOptions): Plugin {
   return (config: Config): Config => {
     const {
       enabled = true,

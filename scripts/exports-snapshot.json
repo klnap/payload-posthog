@@ -1,6 +1,6 @@
 {
   "runtime": {
-    ".": ["PostHog", "payloadDistinctId"],
+    ".": ["postHog", "payloadDistinctId"],
     "./admin": ["PostHogAdminProvider"],
     "./client": ["usePostHogSupport"],
     "./next-config": ["withPostHogConfig"],
