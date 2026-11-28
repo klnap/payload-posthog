@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+### Patch Changes
+
+- 74a11c9: Improve the README with clearer feature coverage, simpler installation and configuration examples, composable Next.js instrumentation, production source-map upload guidance, separate ingestion and management API hosts, and consistent environment examples.
+
 ## 0.2.0
 
 ### Minor Changes
