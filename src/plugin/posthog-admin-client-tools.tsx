@@ -1,55 +1,47 @@
 'use client'
 
-import { lazy, Suspense } from 'react'
-import { usePayloadRoutes } from './payload-routes'
-import { PostHogGuestTracking } from './posthog-guest-tracking'
-import { PostHogIdentify } from './posthog-identify'
-
-const PostHogSupport = lazy(() =>
-  import('./posthog-support').then(({ PostHogSupport }) => ({ default: PostHogSupport }))
-)
+import { PostHogPageView, usePostHog } from '@posthog/next'
+import { Suspense } from 'react'
+import { LAUNCHER_STYLESHEET } from '../conversations/launcher'
+import { installNativeUrlRedaction } from '../redaction/install'
+import type { NativeAuthRoutes } from '../redaction/url-redaction'
+import { PostHogIdentity } from './posthog-identity'
 
 type Props = {
+  identityCollections: string[]
+  nativeRoutes: NativeAuthRoutes
   identify: { properties: Record<string, string> } | null
-  identityCollection?: string
-  guestTracking: { enabled: boolean; paths: string[] }
-  sessionReplay: boolean
-  support: { launcher: 'visible' | 'hidden'; endpoint: string } | null
+  conversations: { endpoint: string; launcher: 'visible' | 'hidden' } | null
+  /** Mounts the native pageview owner. False when the host set `capture_pageview` itself. */
+  capturePageviews: boolean
 }
 
 export function PostHogAdminClientTools({
+  identityCollections,
+  nativeRoutes,
   identify,
-  identityCollection,
-  guestTracking,
-  sessionReplay,
-  support,
+  conversations,
+  capturePageviews,
 }: Props) {
-  const { adminPath, guestPaths } = usePayloadRoutes(guestTracking.paths)
-
+  // Runs during render, before the children below can capture: the first event is already redacted.
+  // `usePostHog()` also returns the singleton during server rendering; installation is client-only.
+  const posthog = usePostHog()
+  if (posthog && typeof window !== 'undefined') installNativeUrlRedaction(posthog, nativeRoutes)
   return (
     <>
-      {identify ? (
-        <PostHogIdentify
-          collection={identityCollection}
-          properties={identify.properties}
-          adminPath={adminPath}
-        />
-      ) : null}
-      <PostHogGuestTracking
-        adminPath={adminPath}
-        guestTracking={{ enabled: guestTracking.enabled, paths: guestPaths }}
-        sessionReplay={sessionReplay}
-      />
-      {support ? (
+      {/* Identity is rendered before the pageview owner: React runs sibling effects in order, so a
+          logout or account switch is applied before the next pageview is captured. */}
+      {identify !== null || conversations !== null ? (
         <Suspense fallback={null}>
-          <PostHogSupport
-            adminPath={adminPath}
-            collection={identityCollection}
-            identityEndpoint={support.endpoint}
-            launcher={support.launcher}
+          <PostHogIdentity
+            identityCollections={identityCollections}
+            identify={identify}
+            conversations={conversations}
           />
         </Suspense>
       ) : null}
+      {capturePageviews ? <PostHogPageView captureRouteTemplate /> : null}
+      {conversations ? <style>{LAUNCHER_STYLESHEET}</style> : null}
     </>
   )
 }

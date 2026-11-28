@@ -1,5 +1,6 @@
 import type { BootstrapFlagsConfig } from '@posthog/next'
 import type { ReactNode } from 'react'
+import type { NativeAuthRoutes } from '../redaction/url-redaction'
 import { normalizeClientOptions } from './normalize-client-options'
 import type { PayloadPostHogOptions } from './types'
 
@@ -12,66 +13,47 @@ export type PostHogAdminProviderProps = {
   clientOptions?: NativeClientOptions
   serverOptions?: NativeServerOptions
   bootstrapFlags?: boolean | BootstrapFlagsConfig
-  identityCollection?: string
+  identityCollections: string[]
+  nativeRoutes: NativeAuthRoutes
   identify: { properties: Record<string, string> } | null
-  guestTracking: { enabled: boolean; paths: string[] }
-  support: { launcher: 'visible' | 'hidden'; endpoint: string } | null
-  user?: Record<string, unknown> | null
+  conversations: { endpoint: string; launcher: 'visible' | 'hidden' } | null
 }
 
-export function resolveBootstrapFlags(
-  bootstrapFlags: boolean | BootstrapFlagsConfig,
-  user: Record<string, unknown> | null | undefined,
-  properties: Record<string, string> | undefined
-): boolean | BootstrapFlagsConfig {
-  if (!bootstrapFlags || !user || !properties) return bootstrapFlags
-  const personProperties = Object.fromEntries(
-    Object.entries(properties)
-      .map(([name, field]) => [name, user[field]])
-      .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
-  )
-  return {
-    ...(typeof bootstrapFlags === 'object' ? bootstrapFlags : {}),
-    personProperties: {
-      ...personProperties,
-      ...(typeof bootstrapFlags === 'object' ? bootstrapFlags.personProperties : {}),
-    },
-  }
-}
-
+/**
+ * Mounts the official `@posthog/next` provider once for the Admin tree. Consumers read the
+ * native SDK with `usePostHog()`; the plugin adds no second SDK instance.
+ */
 export async function PostHogAdminProvider({
   children,
   apiKey,
   clientOptions,
   serverOptions,
-  bootstrapFlags = true,
-  identityCollection,
+  bootstrapFlags,
+  identityCollections,
+  nativeRoutes,
   identify,
-  guestTracking,
-  support,
-  user,
+  conversations,
 }: PostHogAdminProviderProps) {
   if (!apiKey) return <>{children}</>
-  const { PostHogPageView, PostHogProvider } = await import('@posthog/next')
-  const { PostHogAdminClientTools } = await import('./posthog-admin-client-tools')
-
-  // Omitted capture_pageview hands pageviews to PostHogPageView. Any explicit value stays with the SDK.
-  const nativePageviews = clientOptions?.capture_pageview === undefined
+  const [{ PostHogProvider }, { PostHogAdminClientTools }] = await Promise.all([
+    import('@posthog/next'),
+    import('./posthog-admin-client-tools'),
+  ])
 
   return (
     <PostHogProvider
       apiKey={apiKey}
-      bootstrapFlags={resolveBootstrapFlags(bootstrapFlags, user, identify?.properties)}
+      bootstrapFlags={bootstrapFlags}
       serverOptions={serverOptions}
-      clientOptions={normalizeClientOptions(clientOptions, support !== null)}
+      clientOptions={normalizeClientOptions(clientOptions, conversations !== null)}
     >
-      {nativePageviews ? <PostHogPageView /> : null}
       <PostHogAdminClientTools
+        identityCollections={identityCollections}
+        nativeRoutes={nativeRoutes}
         identify={identify}
-        identityCollection={identityCollection}
-        guestTracking={guestTracking}
-        sessionReplay={clientOptions?.disable_session_recording !== true}
-        support={support}
+        conversations={conversations}
+        // Explicit `true` leaves pageviews to posthog-js; explicit `false` sends none.
+        capturePageviews={clientOptions?.capture_pageview === undefined}
       />
       {children}
     </PostHogProvider>

@@ -30,8 +30,9 @@ jobs:
       - run: bun run lint:oxlint
       - run: bun run typecheck
       - run: bun run knip
-      - run: bun test src tests/unit
+      - run: bun test src
       - run: bun run build
+      - run: bun test tests/compatibility/bootstrap-runtime.test.ts
       - run: bun run check:exports
       - run: bun run check:package
       - run: bun run check:release

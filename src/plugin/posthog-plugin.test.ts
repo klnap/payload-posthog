@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import type { Config } from 'payload'
-import { type PayloadPostHogOptions, PostHog } from '../exports/index'
-import { POSTHOG_SUPPORT_IDENTITY_PATH } from '../support/payload-identity-endpoint'
+import { CONVERSATIONS_IDENTITY_PATH } from '../conversations/identity-endpoint'
+import { type PayloadPostHogOptions, postHog } from '../exports/index'
 
 const config = {
   admin: { user: 'users' },
@@ -9,123 +9,219 @@ const config = {
 } as Config
 
 const apply = (options: PayloadPostHogOptions, base: Config = config) =>
-  PostHog(options)(base) as Config
+  postHog(options)(base) as Config
 
-const providerEntry = (result: Config) => result.admin?.components?.providers?.at(-1)
+type ProviderEntry = { path: string; clientProps: Record<string, unknown>; serverProps?: unknown }
+const providerEntry = (result: Config) =>
+  result.admin?.components?.providers?.at(-1) as unknown as ProviderEntry | undefined
+const providerProps = (result: Config) => providerEntry(result)?.clientProps ?? {}
 
-describe('PostHog', () => {
-  it('registers nothing without an API key', () => {
+// @ts-expect-error Internal extension constructors cannot cross Payload's serialized provider boundary.
+const extensionClasses: PayloadPostHogOptions['clientOptions'] = { __extensionClasses: {} }
+void extensionClasses
+
+describe('postHog', () => {
+  it('exports the lower-camelCase factory only', async () => {
+    const exports = await import('../exports/index')
+    expect(exports.postHog).toBeTypeOf('function')
+    expect(Object.keys(exports).sort()).toEqual(['payloadDistinctId', 'postHog'])
+  })
+
+  it('registers nothing when disabled or without an API key', () => {
     expect(apply({ apiKey: '' })).toBe(config)
+    expect(apply({ apiKey: 'phc_public', enabled: false })).toBe(config)
   })
 
-  it('registers one native provider with native options passed through unchanged', () => {
-    const clientOptions = {
-      api_host: 'https://events.example.test',
-      ui_host: 'https://eu.posthog.com',
-      autocapture: true,
-      session_recording: { maskInputOptions: { password: true } },
-    }
-    const result = apply({ apiKey: 'phc_public', clientOptions })
-
-    expect(result.admin?.components?.providers).toHaveLength(1)
-    expect(providerEntry(result)).toMatchObject({
-      path: '@klnap/payload-posthog/admin#PostHogAdminProvider',
-      clientProps: { apiKey: 'phc_public', clientOptions, identityCollection: 'users' },
-      serverProps: { bootstrapFlags: true },
-    })
-  })
-
-  it('passes serverOptions and explicit bootstrapFlags to the server props only', () => {
-    const result = apply({
-      apiKey: 'phc_public',
-      serverOptions: { host: 'https://ingest.example.test' },
-      bootstrapFlags: false,
-    })
-
-    expect(providerEntry(result)).toMatchObject({
-      clientProps: { clientOptions: undefined },
-      serverProps: {
-        serverOptions: { host: 'https://ingest.example.test' },
-        bootstrapFlags: false,
-      },
-    })
-  })
-
-  it('rejects function-valued options, including nested ones, before they reach the client', () => {
-    expect(() =>
-      apply({
-        apiKey: 'phc_public',
-        clientOptions: { before_send: () => null } as PayloadPostHogOptions['clientOptions'],
-      })
-    ).toThrow('clientOptions.before_send must be serializable')
-    expect(() =>
-      apply({
-        apiKey: 'phc_public',
-        clientOptions: {
-          session_recording: { maskTextFn: () => '' },
-        } as unknown as PayloadPostHogOptions['clientOptions'],
-      })
-    ).toThrow('clientOptions.session_recording.maskTextFn must be serializable')
-    expect(() =>
-      apply({
-        apiKey: 'phc_public',
-        serverOptions: { fetch: () => Promise.reject(new Error('unused')) } as never,
-      })
-    ).toThrow('serverOptions.fetch must be serializable')
-  })
-
-  it('passes guest tracking options through with defaults on', () => {
-    expect(providerEntry(apply({ apiKey: 'phc_public' }))).toMatchObject({
-      clientProps: { guestTracking: { enabled: true, paths: [] } },
-    })
-    expect(
-      providerEntry(
-        apply({
-          apiKey: 'phc_public',
-          payload: { guestTracking: { enabled: false, paths: ['/accept-invitation'] } },
-        })
-      )
-    ).toMatchObject({
-      clientProps: { guestTracking: { enabled: false, paths: ['/accept-invitation'] } },
-    })
-  })
-
-  it('keeps Support off unless payload.support is configured', () => {
+  it('minimal configuration registers the provider, identity, and error tracking', () => {
     const result = apply({ apiKey: 'phc_public' })
-    expect(result.endpoints).toBeUndefined()
-    expect(providerEntry(result)).toMatchObject({ clientProps: { support: null } })
+    expect(providerEntry(result)?.path).toBe('@klnap/payload-posthog/admin#PostHogAdminProvider')
+    expect(providerProps(result)).toMatchObject({
+      apiKey: 'phc_public',
+      identityCollections: ['users'],
+      nativeRoutes: { adminRoute: '/admin', resetRoute: '/reset' },
+      identify: { properties: { email: 'email' } },
+      conversations: null,
+    })
+    expect(result.hooks?.afterError).toHaveLength(1)
+    expect(result.endpoints ?? []).toHaveLength(0)
   })
 
-  it('enables Support and keeps the identity secret out of client props', () => {
+  it('does not forward bootstrapFlags unless the host sets it', () => {
+    expect(providerProps(apply({ apiKey: 'phc_public' })).bootstrapFlags).toBeUndefined()
+    expect(
+      providerEntry(apply({ apiKey: 'phc_public', bootstrapFlags: false }))?.clientProps
+    ).toMatchObject({ bootstrapFlags: false })
+  })
+
+  it('merges custom identify properties over the email default', () => {
     const result = apply({
       apiKey: 'phc_public',
-      payload: { support: { identitySecret: 'support-secret' } },
+      payload: { identify: { properties: { name: 'profile.fullName', roles: 'roles[].name' } } },
     })
-
-    expect(result.endpoints?.[0]).toMatchObject({
-      path: POSTHOG_SUPPORT_IDENTITY_PATH,
-      method: 'get',
+    expect(providerProps(result).identify).toEqual({
+      properties: { email: 'email', name: 'profile.fullName', roles: 'roles[].name' },
     })
-    expect(providerEntry(result)).toMatchObject({
-      clientProps: { support: { endpoint: '/api/posthog/support/identity' } },
-    })
-    expect(JSON.stringify(providerEntry(result))).not.toContain('support-secret')
   })
 
-  it('requires an authenticated collection when Support is enabled', () => {
+  it('rejects identify mappings that point at credential fields', () => {
     expect(() =>
-      apply({ apiKey: 'phc_public', payload: { support: { identitySecret: 'support-secret' } } }, {
-        collections: [],
-      } as unknown as Config)
-    ).toThrow('Support requires an authenticated Payload collection')
+      apply({ apiKey: 'phc_public', payload: { identify: { properties: { pw: 'password' } } } })
+    ).toThrow('credential field')
   })
 
-  it('rejects a conflicting GET identity endpoint', () => {
+  it('disables identification with an explicit opt-out', () => {
+    expect(
+      providerProps(apply({ apiKey: 'phc_public', payload: { identify: { enabled: false } } }))
+        .identify
+    ).toBeNull()
+  })
+
+  it('omits error tracking when disabled', () => {
+    expect(
+      apply({ apiKey: 'phc_public', payload: { errorTracking: { enabled: false } } }).hooks
+        ?.afterError
+    ).toBeUndefined()
+  })
+
+  it('registers the Conversations endpoint and clientProps only when configured', () => {
+    const result = apply({
+      apiKey: 'phc_public',
+      payload: { conversations: { secret: 'synthetic-secret' } },
+    })
+    expect(result.endpoints?.[0]?.path).toBe(CONVERSATIONS_IDENTITY_PATH)
+    expect(providerProps(result).conversations).toEqual({
+      endpoint: '/api/posthog/conversations/identity',
+      launcher: 'visible',
+    })
+  })
+
+  it('never places the Conversations secret in browser-visible props', () => {
+    const result = apply({
+      apiKey: 'phc_public',
+      payload: { conversations: { secret: 'synthetic-secret-value', launcher: 'hidden' } },
+    })
+    expect(JSON.stringify(providerEntry(result)?.clientProps)).not.toContain('synthetic-secret')
+    expect(JSON.stringify(providerEntry(result)?.serverProps)).not.toContain('synthetic-secret')
+    expect(providerProps(result).conversations).toEqual({
+      endpoint: '/api/posthog/conversations/identity',
+      launcher: 'hidden',
+    })
+  })
+
+  it('honors routes.api for the Conversations endpoint URL', () => {
+    const result = apply({ apiKey: 'phc_public', payload: { conversations: { secret: 's' } } }, {
+      ...config,
+      routes: { api: '/custom-api' },
+    } as Config)
+    expect(providerProps(result).conversations).toEqual({
+      endpoint: '/custom-api/posthog/conversations/identity',
+      launcher: 'visible',
+    })
+  })
+
+  it('requires an authenticated collection and a secret for Conversations', () => {
     expect(() =>
-      apply({ apiKey: 'phc_public', payload: { support: { identitySecret: 'secret' } } }, {
-        ...config,
-        endpoints: [{ path: POSTHOG_SUPPORT_IDENTITY_PATH, method: 'get', handler: () => null }],
+      apply({ apiKey: 'phc_public', payload: { conversations: { secret: 's' } } }, {
+        collections: [{ slug: 'pages' }],
       } as unknown as Config)
+    ).toThrow('requires an authenticated Payload collection')
+    expect(() =>
+      apply({ apiKey: 'phc_public', payload: { conversations: { secret: '' } } })
+    ).toThrow('non-empty string')
+  })
+
+  it('requires identification for Conversations because both must verify the same ID', () => {
+    expect(() =>
+      apply({
+        apiKey: 'phc_public',
+        payload: { identify: { enabled: false }, conversations: { secret: 's' } },
+      })
+    ).toThrow('requires payload.identify')
+  })
+
+  it('rejects an existing GET endpoint at the Conversations path', () => {
+    const base = {
+      ...config,
+      endpoints: [
+        { path: '/posthog/conversations/identity', method: 'get', handler: () => new Response() },
+      ],
+    } as Config
+    expect(() =>
+      apply({ apiKey: 'phc_public', payload: { conversations: { secret: 's' } } }, base)
     ).toThrow('conflicts with an existing Payload endpoint')
+  })
+
+  it('rejects function-valued client and server options before they reach the provider', () => {
+    expect(() =>
+      apply({
+        apiKey: 'phc_public',
+        clientOptions: { loaded: () => undefined } as never,
+      })
+    ).toThrow('clientOptions.loaded must be serializable')
+    expect(() =>
+      apply({ apiKey: 'phc_public', serverOptions: { before_send: () => null } as never })
+    ).toThrow('serverOptions.before_send must be serializable')
+  })
+
+  describe('debug mode', () => {
+    const afterMeHooks = (result: Config) => result.collections?.[0]?.hooks?.afterMe ?? []
+    const withSilentLog = <T>(run: () => T): T => {
+      const log = console.log
+      const table = console.table
+      console.log = () => {}
+      console.table = () => {}
+      try {
+        return run()
+      } finally {
+        console.log = log
+        console.table = table
+      }
+    }
+
+    it('keyless without debug registers nothing (unchanged behavior)', () => {
+      const base = { ...config, collections: [{ slug: 'users', auth: true }] } as Config
+      expect(apply({ apiKey: undefined } as never, base)).toBe(base)
+    })
+
+    it('keyless debug registers identity diagnostics only: no provider, no error capture, no endpoint', () => {
+      const result = withSilentLog(() =>
+        apply({ debug: true, payload: { conversations: { secret: 's' } } } as never)
+      )
+      expect(result.admin?.components?.providers).toBeUndefined()
+      expect(result.hooks?.afterError).toBeUndefined()
+      expect(result.endpoints ?? []).toHaveLength(0)
+      expect(afterMeHooks(result)).toHaveLength(1)
+    })
+
+    it('keyed debug adds the diagnostics next to the normal integration', () => {
+      const result = withSilentLog(() => apply({ apiKey: 'phc_public', debug: true }))
+      expect(providerEntry(result)?.path).toBe('@klnap/payload-posthog/admin#PostHogAdminProvider')
+      expect(result.hooks?.afterError).toHaveLength(1)
+      expect(afterMeHooks(result)).toHaveLength(1)
+    })
+
+    it('appends diagnostics without replacing existing afterMe hooks', () => {
+      const existing = () => undefined
+      const base = {
+        ...config,
+        collections: [{ slug: 'users', auth: true, fields: [], hooks: { afterMe: [existing] } }],
+      } as Config
+      const result = withSilentLog(() => apply({ debug: true }, base))
+      expect(afterMeHooks(result)[0]).toBe(existing)
+      expect(afterMeHooks(result)).toHaveLength(2)
+    })
+
+    it('debug disabled by default: no diagnostics hooks are added', () => {
+      const result = apply({ apiKey: 'phc_public' })
+      expect(afterMeHooks(result)).toHaveLength(0)
+    })
+
+    it('enabled: false with debug registers nothing', () => {
+      const result = withSilentLog(() =>
+        apply({ apiKey: undefined, enabled: false, debug: true } as never)
+      )
+      expect(result.admin?.components?.providers).toBeUndefined()
+      expect(afterMeHooks(result)).toHaveLength(0)
+    })
   })
 })
