@@ -46,7 +46,7 @@
     "check:exports": "bun scripts/check-exports.mjs",
     "changeset": "changeset",
     "changeset:version": "changeset version",
-    "changeset:version-check": "bun run changeset:version && bun run lint && bun run lint:oxlint && bun run typecheck && bun run knip && bun test src && bun test tests/compatibility/bootstrap-runtime.test.ts && bun run build && bun run check:exports && bun run check:package && bun run check:release",
+    "changeset:version-check": "bun run changeset:version && bun run lint && bun run lint:oxlint && bun run typecheck && bun run knip && bun test src && bun run build && bun test tests/compatibility/bootstrap-runtime.test.ts && bun run check:exports && bun run check:package && bun run check:release",
     "lint": "biome check .",
     "format": "biome format --write .",
     "lint:oxlint": "oxlint --config .oxlintrc.json --deny-warnings --no-error-on-unmatched-pattern",
