@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+### Minor Changes
+
+- 0ec417b: Require `posthog-node` 6 and use its current exception-capture API. Update outdated PostHog SDK and development dependency versions.
+
 ## 0.2.1
 
 ### Patch Changes
