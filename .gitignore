@@ -9,3 +9,4 @@ coverage/
 .test-output/
 .turbo/
 .serena/
+/tests/compatibility/next/.next-*/
