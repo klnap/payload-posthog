@@ -119,7 +119,14 @@ jobs:
         run: |
           tgz="klnap-payload-posthog-$VERSION.tgz"
           local_integrity="sha512-$(openssl dgst -sha512 -binary "$tgz" | base64 -w0)"
-          npm_integrity="$(npm view "@klnap/payload-posthog@$VERSION" dist.integrity)"
+          for attempt in {1..30}; do
+            if npm_integrity="$(npm view "@klnap/payload-posthog@$VERSION" dist.integrity 2>/dev/null)"; then
+              break
+            fi
+            echo "npm has not indexed @klnap/payload-posthog@$VERSION yet (attempt $attempt/30)"
+            sleep 10
+          done
+          test -n "$npm_integrity" || { echo "npm did not index @klnap/payload-posthog@$VERSION within 5 minutes"; exit 1; }
           test "$local_integrity" = "$npm_integrity" || { echo "npm tarball differs from the validated tarball"; exit 1; }
           tar -xzOf "$tgz" package/CHANGELOG.md | awk -v v="$VERSION" '$0 ~ "^## \\[?"v"\\]?" {f=1; next} /^## / {f=0} f' > notes.md
           test -s notes.md || { echo "No CHANGELOG section for $VERSION"; exit 1; }
