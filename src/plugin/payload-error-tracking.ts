@@ -48,7 +48,7 @@ export function createPayloadAfterErrorHook({
       clientPromise ??= import('posthog-node')
         .then(({ PostHog }) => {
           return new PostHog(apiKey, {
-            ...withSanitizedBeforeSend(serverOptions),
+            ...withSanitizedBeforeSend(serverOptions, 'beforeSend'),
             fetchRetryCount: serverOptions?.fetchRetryCount ?? 0,
             requestTimeout: serverOptions?.requestTimeout ?? 2_000,
           })
@@ -70,10 +70,13 @@ export function createPayloadAfterErrorHook({
       // Payload awaits afterError hooks before responding. Do not hold the original error response
       // for ingestion; failures are swallowed below.
       void client
-        .captureExceptionImmediate(error, distinctId, {
-          source: 'payload',
-          ...(collection?.slug ? { collection: collection.slug } : {}),
-          ...(typeof status === 'number' ? { status_code: status } : {}),
+        .captureExceptionImmediate(error, {
+          distinctId,
+          properties: {
+            source: 'payload',
+            ...(collection?.slug ? { collection: collection.slug } : {}),
+            ...(typeof status === 'number' ? { status_code: status } : {}),
+          },
         })
         .catch(() => {})
     } catch {

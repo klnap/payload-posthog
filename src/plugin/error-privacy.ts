@@ -48,15 +48,23 @@ export function sanitizeExceptionProperties(
   return safe
 }
 
-/** Appends the exception sanitizer to host `before_send` handlers, preserving their order. */
-export function withSanitizedBeforeSend<T extends { before_send?: unknown }>(
-  options: T | undefined
-): T & { before_send: unknown[] } {
-  const handlers = options?.before_send
+/** Appends the exception sanitizer to host handlers, preserving their order. */
+type BeforeSendHandler<T, K extends 'beforeSend' | 'before_send'> = K extends keyof T
+  ? NonNullable<T[K]> extends infer Value
+    ? Value extends (infer Handler)[]
+      ? Handler
+      : Value
+    : never
+  : never
+
+export function withSanitizedBeforeSend<T extends object, K extends 'beforeSend' | 'before_send'>(
+  options: T | undefined,
+  key: K
+): Omit<T, K> & Record<K, BeforeSendHandler<T, K>[]> {
+  const handlers = (options as (Record<K, unknown> & T) | undefined)?.[key]
   const host = handlers ? (Array.isArray(handlers) ? handlers : [handlers]) : []
-  return { ...options, before_send: [...host, sanitizeExceptionEvent] } as T & {
-    before_send: unknown[]
-  }
+  return { ...options, [key]: [...host, sanitizeExceptionEvent] } as Omit<T, K> &
+    Record<K, BeforeSendHandler<T, K>[]>
 }
 
 export function sanitizeExceptionEvent(event: EventMessage): EventMessage | null {

@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'bun:test'
 import type { EventMessage } from 'posthog-node'
-import { sanitizeExceptionEvent, sanitizeExceptionProperties } from './error-privacy'
+import {
+  sanitizeExceptionEvent,
+  sanitizeExceptionProperties,
+  withSanitizedBeforeSend,
+} from './error-privacy'
 
 describe('exception privacy', () => {
+  it('preserves host handlers for both PostHog Node option spellings', () => {
+    const hostHandler = (event: EventMessage): EventMessage | null => event
+    const current = withSanitizedBeforeSend({ beforeSend: hostHandler }, 'beforeSend')
+    const legacy = withSanitizedBeforeSend({ before_send: hostHandler }, 'before_send')
+
+    expect(current.beforeSend).toEqual([hostHandler, sanitizeExceptionEvent])
+    expect(legacy.before_send).toEqual([hostHandler, sanitizeExceptionEvent])
+  })
+
   it('keeps safe metadata and strips arbitrary properties and exception messages', () => {
     expect(
       sanitizeExceptionProperties({

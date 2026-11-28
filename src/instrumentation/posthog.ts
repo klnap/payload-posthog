@@ -26,7 +26,7 @@ function withSafeExceptionCapture(options?: OnRequestErrorOptions): OnRequestErr
 
   return {
     ...options,
-    serverOptions: withSanitizedBeforeSend(options?.serverOptions),
+    serverOptions: withSanitizedBeforeSend(options?.serverOptions, 'before_send'),
     beforeCapture: async (context) => {
       const result = await beforeCapture?.(context)
       if (result === false) return false
