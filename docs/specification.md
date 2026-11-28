@@ -4,7 +4,7 @@ Native PostHog integration for Payload CMS. The plugin implements what is specif
 
 ## 1. Versions verified
 
-Payload and `@payloadcms/ui` 3.94.1, `@posthog/next` 0.11.1 (`@posthog/react`, `@posthog/core` as bundled), `posthog-js` 1.454.2, `posthog-node` 5.74.0, `@posthog/nextjs-config` 1.12.2, Next.js 16.4.5 (the fixture's declared version; `next dev` runs used 16.4.6).
+Payload and `@payloadcms/ui` 3.94.1, `@posthog/next` 0.11.1 (`@posthog/react`, `@posthog/core` as bundled), `posthog-js` 1.455.4, `posthog-node` 6.2.0, `@posthog/nextjs-config` 1.12.2, Next.js 16.4.5 (the fixture's declared version; `next dev` runs used 16.4.6).
 
 ## 2. Scope
 

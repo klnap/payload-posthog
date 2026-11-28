@@ -159,8 +159,8 @@ describe('postHog', () => {
       })
     ).toThrow('clientOptions.loaded must be serializable')
     expect(() =>
-      apply({ apiKey: 'phc_public', serverOptions: { before_send: () => null } as never })
-    ).toThrow('serverOptions.before_send must be serializable')
+      apply({ apiKey: 'phc_public', serverOptions: { beforeSend: () => null } as never })
+    ).toThrow('serverOptions.beforeSend must be serializable')
   })
 
   describe('debug mode', () => {
