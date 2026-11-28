@@ -1,0 +1,19 @@
+name: Bug report
+description: Report a reproducible defect.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Include a minimal reproduction and the expected behavior.
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Package, Payload, and PostHog versions
+      placeholder: "@klnap/payload-posthog 0.2.0, Payload 3.x, posthog-js 1.x"
+    validations:
+      required: true
