@@ -48,6 +48,17 @@ export function sanitizeExceptionProperties(
   return safe
 }
 
+/** Appends the exception sanitizer to host `before_send` handlers, preserving their order. */
+export function withSanitizedBeforeSend<T extends { before_send?: unknown }>(
+  options: T | undefined
+): T & { before_send: unknown[] } {
+  const handlers = options?.before_send
+  const host = handlers ? (Array.isArray(handlers) ? handlers : [handlers]) : []
+  return { ...options, before_send: [...host, sanitizeExceptionEvent] } as T & {
+    before_send: unknown[]
+  }
+}
+
 export function sanitizeExceptionEvent(event: EventMessage): EventMessage | null {
   if (event.event !== '$exception') return event
   return {

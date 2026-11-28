@@ -1,7 +1,7 @@
 import type { AfterErrorHook } from 'payload'
 import type { PostHogOptions } from 'posthog-node'
 import { payloadDistinctId } from '../identity/payload-distinct-id'
-import { sanitizeExceptionEvent } from './error-privacy'
+import { withSanitizedBeforeSend } from './error-privacy'
 
 export type PayloadErrorCaptureContext = {
   error: Error
@@ -9,9 +9,10 @@ export type PayloadErrorCaptureContext = {
   status?: number
 }
 
-export type PayloadErrorTrackingOptions = {
+type PayloadErrorTrackingOptions = {
   apiKey: string
   serverOptions?: Partial<PostHogOptions>
+  /** Admin user collection, used when the request carries no authenticated collection. */
   authCollection?: string
   shouldCapture?: (context: PayloadErrorCaptureContext) => boolean | Promise<boolean>
 }
@@ -44,31 +45,37 @@ export function createPayloadAfterErrorHook({
         return
       }
 
-      clientPromise ??= import('posthog-node').then(({ PostHog }) => {
-        const beforeSend = serverOptions?.before_send
-        const beforeSendHandlers = beforeSend
-          ? Array.isArray(beforeSend)
-            ? beforeSend
-            : [beforeSend]
-          : []
-        return new PostHog(apiKey, {
-          ...serverOptions,
-          fetchRetryCount: serverOptions?.fetchRetryCount ?? 0,
-          requestTimeout: serverOptions?.requestTimeout ?? 2_000,
-          before_send: [...beforeSendHandlers, (event) => sanitizeExceptionEvent(event)],
+      clientPromise ??= import('posthog-node')
+        .then(({ PostHog }) => {
+          return new PostHog(apiKey, {
+            ...withSanitizedBeforeSend(serverOptions),
+            fetchRetryCount: serverOptions?.fetchRetryCount ?? 0,
+            requestTimeout: serverOptions?.requestTimeout ?? 2_000,
+          })
         })
-      })
+        // A failed import must not disable capture for the rest of the process.
+        .catch((error: unknown) => {
+          clientPromise = undefined
+          throw error
+        })
       const client = await clientPromise
+      // Prefer the collection the request authenticated against; fall back to the Admin user collection.
       const userId = req.user?.id
+      const userCollection =
+        (req.user as { collection?: string } | null)?.collection ?? authCollection
       const distinctId =
-        authCollection && (typeof userId === 'string' || typeof userId === 'number')
-          ? payloadDistinctId(authCollection, userId)
+        userCollection && (typeof userId === 'string' || typeof userId === 'number')
+          ? payloadDistinctId(userCollection, userId)
           : undefined
-      await client.captureExceptionImmediate(error, distinctId, {
-        source: 'payload',
-        ...(collection?.slug ? { collection: collection.slug } : {}),
-        ...(typeof status === 'number' ? { status_code: status } : {}),
-      })
+      // Payload awaits afterError hooks before responding. Do not hold the original error response
+      // for ingestion; failures are swallowed below.
+      void client
+        .captureExceptionImmediate(error, distinctId, {
+          source: 'payload',
+          ...(collection?.slug ? { collection: collection.slug } : {}),
+          ...(typeof status === 'number' ? { status_code: status } : {}),
+        })
+        .catch(() => {})
     } catch {
       // Error telemetry must not change the host error response.
     }

@@ -2,7 +2,7 @@ import 'server-only'
 
 import type { OnRequestErrorOptions } from '@posthog/next'
 import type { Instrumentation } from 'next'
-import { sanitizeExceptionEvent, sanitizeExceptionProperties } from '../plugin/error-privacy'
+import { sanitizeExceptionProperties, withSanitizedBeforeSend } from '../plugin/error-privacy'
 
 type RequestErrorHandler = Instrumentation.onRequestError
 
@@ -22,20 +22,11 @@ function getRequestErrorHandler(options?: OnRequestErrorOptions): Promise<Reques
 }
 
 function withSafeExceptionCapture(options?: OnRequestErrorOptions): OnRequestErrorOptions {
-  const beforeSend = options?.serverOptions?.before_send
-  const beforeSendHandlers = beforeSend
-    ? Array.isArray(beforeSend)
-      ? beforeSend
-      : [beforeSend]
-    : []
   const beforeCapture = options?.beforeCapture
 
   return {
     ...options,
-    serverOptions: {
-      ...options?.serverOptions,
-      before_send: [...beforeSendHandlers, sanitizeExceptionEvent],
-    },
+    serverOptions: withSanitizedBeforeSend(options?.serverOptions),
     beforeCapture: async (context) => {
       const result = await beforeCapture?.(context)
       if (result === false) return false

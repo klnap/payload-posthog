@@ -1,352 +1,244 @@
-# `@klnap/payload-posthog` Product and Technical Specification
-
-**Status:** Authoritative architecture; implementation status is tracked per capability below.
-**Product:** Native PostHog integration for Payload CMS. Zero configuration. Meaningful defaults. Full control.
-
-## 1. Product scope
-
-The package connects Payload Admin to native PostHog products and adds Payload-specific identity, resource context, and administrative event semantics. It does not replace PostHog SDKs or products.
-
-In scope:
-
-- Native browser Product Analytics, pageviews, pageleave, autocapture, Web Vitals, Feature Flags, Experiments, Surveys, Heatmaps, Session Replay, and browser Error Tracking where supported by the installed SDK.
-- Payload Admin identity, safe guest tracking, resource-view analytics, administrative activity where a supported observation point proves the action, and authentication lifecycle tracking where an outcome is observable.
-- Payload and Next.js Error Tracking through supported server hooks and instrumentation.
-- Authenticated PostHog Conversations Support and official PostHog source-map tooling.
-- Native Payload plugin interoperability, resource-local customization, typed options, and diagnostics.
-- Best-effort delivery through native SDKs.
-
-Out of scope:
-
-- Public website CRUD/read analytics, arbitrary REST/GraphQL/Local API analytics, background job attribution, or security auditing.
-- A custom analytics SDK, event bus, event registry, delivery queue, transactional outbox, audit database, dashboard, CMP, Replay engine, feature-flag system, or source-map uploader.
-- DOM scraping, undocumented React contexts, monkey-patching, request interception, and replacement of native Admin components to infer activity.
-- IAM-specific dependencies, automatic collection of complete documents, raw diffs, credentials, or sensitive form values.
-
-## 2. Verified architecture and runtime boundaries
-
-### Payload
-
-The supported baseline is Payload `3.94.1` and `@payloadcms/ui` `3.94.1`; package peer ranges are recorded in `package.json`.
-
-- The plugin uses the public `admin.components.providers` slot and Payload's import map to mount a provider in the Admin React tree.
-- The provider can use public `@payloadcms/ui` hooks for current Admin authentication state and public Next.js routing hooks for route changes.
-- Payload collection hooks expose operation types, request context, and errors, but no installed public semantic Admin event bus or general Admin-versus-Local-API provenance.
-- `req.transactionID` identifies a transaction; it does not confirm commit.
-- `afterChange` and `afterOperation` are not commit callbacks. They cannot by themselves justify a successful analytics event.
-- Auth hooks expose server-side lifecycle points, but the shared authentication endpoint does not establish that its caller is the Admin.
-- Global and collection `afterError` hooks observe selected routed errors and can alter responses. Integration callbacks must preserve response behavior and must not throw.
-- `definePlugin`, plugin ordering, and `RegisteredPlugins` exist in the installed API. `RegisteredPlugins` and cross-plugin typing are experimental; discovery only sees registered plugins.
-
-Evidence: installed declarations and implementation under `node_modules/payload/dist/`, especially `config/types.d.ts`, `config/build.js`, `config/definePlugin.js`, `collections/config/types.d.ts`, `auth/operations/login.js`, and `utilities/routeError.js`; current provider wiring in `src/plugin/posthog-plugin.ts`.
-
-### Runtime ownership
-
-- Browser-only logic belongs in the Admin provider and client entrypoints. No server SDK or server secret may enter browser bundles.
-- Server capture uses the native `posthog-node` client and remains independent of Admin Product Analytics eligibility. `@posthog/next` owns a separate cached server client for its provider/flag APIs; it does not accept an injected `posthog-node` client.
-- Next.js instrumentation is host-owned: the host composes the package functions into its single instrumentation entrypoint.
-- `clientOptions` and `serverOptions` retain native SDK types. `@posthog/next` accepts partial `PostHogConfig` and `PostHogOptions`, but Payload provider props cannot carry function-valued callbacks. No verified module-reference contract currently forwards these callbacks.
-- PostHog product availability and behavior can depend on project settings, credentials, consent policy, SDK configuration, and plan availability. Plugin configuration alone does not activate every product.
-- Installed versions are `@posthog/next` `0.11.1`, `posthog-js` `1.454.2`, `posthog-node` `5.74.0`, `@posthog/nextjs-config` `1.12.2`, Payload `3.94.1`, and Next `16.4.6`. The declared Next peer floor is `16.4.5`; that exact version was not inspected.
-- `posthog-js` and `posthog-node` expose native `captureException`; `@posthog/next` exposes request-error capture helpers. Its request handler supports server-side `beforeCapture`, disablement, and cookie-based consent; local-storage-only opt-out is not visible server-side.
-- Next `onRequestError` does not cover Proxy failures in the inspected Next 16 API. It does not capture build/type errors or every caught exception.
-- Native Replay options support input masking. The package now defaults `maskAllInputs: true` and keeps password masking enabled even when the host changes other mask options. Hosts can explicitly set `maskAllInputs: false`; that weakens protection and requires application-level review. The provider API cannot accept client callbacks through serialized Payload props, so field-by-field unmasking is not currently supported.
-- Native referrer capture is disabled because a previous URL can carry a sensitive query value. Replay also masks all `[contenteditable]` text while preserving host `maskTextSelector` entries.
-- Native campaign parameter persistence is disabled because query values can be sensitive and would attach to later events.
-- Native browser Error Tracking can send exception messages unchanged when `capture_exceptions: true`; the plugin cannot serialize a `before_send` callback. Hosts must keep secrets out of browser error messages or leave this option disabled.
-- The native `@posthog/next` `PostHogPageView` captures the full current URL including query values. The default Admin tracker therefore emits the native `$pageview` name itself with a route template, strips query/hash and document IDs, and suppresses custom, auth, sensitive, and queried routes. It enables autocapture only on supported routes and disables it on unsafe routes. Explicit native `clientOptions.capture_pageview` opts out of this pageview guard.
-- Replay starts only after route, identity, and guest eligibility checks pass. Initialization disables recording before the first client effect; safe routes also require empty query strings.
-- Existing SDK consent checks gate browser identity and Support. Server error consent requires the relevant opt-out cookie and is independently configured.
-
-Context7 documentation lookup hit its monthly quota. Decisions use installed package source/declarations and repository code; the packed consumer was runtime-tested with Next `16.4.5`.
-
-## 3. Public contract
-
-The minimal integration remains:
-
-```ts
-import { postHog } from '@klnap/payload-posthog'
-import { buildConfig } from 'payload'
-
-export default buildConfig({
-  plugins: [
-    postHog({
-      apiKey: process.env.NEXT_PUBLIC_POSTHOG_KEY!,
-    }),
-  ],
-})
-```
-
-The intended top-level contract is:
-
-```ts
-postHog({
-  apiKey,
-  enabled,
-  debug,
-  clientOptions,
-  serverOptions,
-  bootstrapFlags,
-  clientConfig,
-  payload: {
-    identify,
-    capture,
-    guestTracking,
-    errorTracking,
-    privacy,
-    support,
-  },
-})
-```
-
-Only `apiKey` is required. Server-only secrets and options remain server-only. Runtime validation must reject invalid effective config with actionable messages and no secret values.
-
-### Intended defaults
-
-- Plugin, Product Analytics, pageviews/pageleave, autocapture with protection, eligible resource reads, authentication, and administrative activity are enabled.
-- Autosave is supported but disabled for every collection/global unless opted in.
-- Error Tracking, guest tracking, Feature Flag bootstrap, and Replay are enabled where SDK, runtime, consent, and privacy policy support them.
-- Native Support is disabled unless its identity secret is configured.
-- Event sampling is `1`, prefix is empty, diagnostics are off.
-- Native product controls remain native SDK options; a plugin default does not guarantee PostHog project activation.
-
-### Configuration inheritance
-
-Supported configuration must use explicit per-field resolution, not an arbitrary deep merge. The precedence is:
-
-1. Library defaults.
-2. Category defaults.
-3. Resource-local configuration.
-4. Centralized resource overrides.
-5. Event-specific settings resolved within the effective resource.
-6. Runtime suppression and consent.
-7. Mandatory privacy restrictions.
-
-Semantics:
-
-- `undefined` inherits; `false` disables its scope; `true` enables eligible defaults.
-- Empty arrays select no operations. Operation arrays select exactly those operations.
-- Empty objects preserve inherited values. Partial event maps change only named events.
-- A custom event-name string enables that event and sets its final name.
-- Event options enable and configure the event unless explicitly disabled.
-- A disabled parent category cannot be re-enabled by child event config. `defaults: false` still permits explicit resource overrides.
-- Predicates, property callbacks, and transforms are isolated: callback failure cannot affect a CMS operation.
-- Sampling defaults to `1`; valid range is `[0, 1]`; disabled events stay disabled and sampling never bypasses privacy or consent.
-
-The implementation and tests must confirm these rules before the public API is documented as final.
-
-### Guest routes
-
-`paths` replaces defaults; `addPaths` extends the effective list; `excludePaths` removes matches afterward. Normalize slashes and route bases from Payload config, support nested paths, and compare decoded path segments safely. Guest-route exclusions do not imply Replay permission. Sensitive routes and URL/query values must be sanitized independently.
-
-## 4. Event naming, payload, and delivery
-
-- Plugin-generated defaults use stable readable `snake_case`, with no mandatory `payload_` prefix.
-- Optional `payload.capture.prefix` concatenates literally and applies only to default plugin event names.
-- An explicit custom event name is final and receives no global prefix.
-- Native PostHog event names and application-captured events are unchanged.
-- No old/new duplicate event names are emitted.
-- Reserved native event names are rejected for plugin event overrides where collision is ambiguous.
-- Event names remain low-cardinality and never include resource IDs, user IDs, or dynamic slugs by default.
-- Plugin-generated events include `{ source: 'payload' }`. Reserved identity, session, resource, and native properties cannot be overwritten by user properties or transforms.
-- Event properties include only semantically available and safe values. No full documents, raw diffs, credential values, or private file paths are sent by default.
-- SDK delivery is asynchronous/batched and best effort. Analytics failure never changes CMS operation success, failure, or exception propagation.
-- No durable delivery, tamper-proof record, or transaction coupling is promised.
-
-## 5. Event catalogue and verification state
-
-Names below are the target default names. A name is not implemented merely because Payload exposes a hook. The implementation must have reliable semantics, provenance, and outcome evidence; unsupported automatic events remain absent and are called out in the final status.
-
-### Collections
-
-| Event | Meaning and gate |
-|---|---|
-| `collection_read` | One intentional Admin list view, not per returned document. |
-| `document_read` | One intentional Admin document view, not a query, prefetch, relationship population, drawer duplicate, or rerender. |
-| `document_created` | Confirmed Admin creation only. |
-| `document_updated` | Confirmed Admin update only; never duplicates autosave. |
-| `document_deleted` | Confirmed Admin deletion; permanent deletion uses metadata. |
-| `document_duplicated` | Confirmed duplicate workflow. |
-| `document_published` / `document_unpublished` | Explicit successful publication transition; status alone is insufficient. |
-| `document_trashed` / `document_restored` | Confirmed trash/restore actions. |
-| `document_versions_read` / `document_version_read` | Intentional version history and version views. |
-| `document_version_restored` | Confirmed version restoration without redundant update event. |
-| `document_draft_saved` / `document_autosaved` | Distinct manual save and autosave; autosave is opt-in. |
-| `document_publish_scheduled` / `document_unpublish_scheduled` | Scheduling intent confirmed; execution is not attributed to the current Admin session. |
-| `document_schedule_cancelled` | Confirmed schedule cancellation. |
-| `document_reordered` | Confirmed reorder action, not generic update. |
-| `document_drawer_opened` | Only if a public view lifecycle distinguishes it meaningfully from `document_read`. |
-
-### Globals
-
-| Event | Meaning and gate |
-|---|---|
-| `global_read` | Intentional global Admin view. |
-| `global_updated` | Confirmed Admin global update. |
-| `global_published` / `global_unpublished` | Explicit successful publication transition. |
-| `global_versions_read` / `global_version_read` / `global_version_restored` | Intentional version operations with confirmed restore. |
-| `global_draft_saved` / `global_autosaved` | Distinct manual save and autosave; autosave is opt-in. |
-| `global_publish_scheduled` / `global_unpublish_scheduled` / `global_schedule_cancelled` | Scheduling or cancellation action, not background execution. |
-
-### Authentication
-
-| Event | Meaning and gate |
-|---|---|
-| `auth_flow_started` | Observable Admin authentication flow start. |
-| `auth_login_succeeded` | Confirmed identity transition correlated to a recent supported login flow. |
-| `auth_login_failed` | Only if a public outcome callback exposes failure without reading form contents. |
-| `auth_logout_completed` | Confirmed identity reset/logout completion. |
-| `auth_account_switched` | Confirmed transition between distinct authenticated identities. |
-| `auth_password_reset_requested` / `auth_password_reset_completed` | Only where public flow outcome is observable; never capture token/form data. |
-| `auth_account_activated` / `auth_email_verified` | Host/custom authentication integration or native manual event unless a reliable public lifecycle hook exists. |
-| `auth_session_expired` / `auth_session_refreshed` | Track only meaningful confirmed lifecycle transitions; omit technical refresh noise by default. |
-
-### Administrative activity
-
-Semantic interactions use the `activity` category, not `admin`. Candidate defaults:
-
-`admin_custom_view_viewed`, `admin_locale_changed`, `admin_language_changed`, `admin_search_performed`, `admin_filter_applied`, `admin_sort_changed`, `admin_pagination_changed`, `admin_columns_changed`, `admin_saved_filter_applied`, `admin_preview_opened`, `admin_live_preview_opened`, `admin_bulk_operation_completed`, `admin_validation_failed`, `admin_editing_conflict_detected`, `admin_document_lock_encountered`, `admin_import_started`, `admin_import_completed`, `admin_import_failed`, `admin_export_started`, `admin_export_completed`, `admin_export_failed`.
-
-Each event is enabled only when a documented public API supplies its semantic outcome. Do not infer activity by scraping DOM, intercepting clicks, or replacing native controls. Native pageviews/autocapture cover generic interactions; do not emit redundant view events.
-
-### Native events
-
-PostHog-owned pageviews, pageleave, autocapture, Web Vitals, exceptions, Feature Flags, Experiments, Surveys, Heatmaps, Replay, and Conversations retain native names and semantics. They are not part of the plugin event catalogue.
-
-## 6. Resource discovery, reads, and provenance
-
-- The plugin discovers host collections/globals from the config it receives when Payload applies it. Place `postHog()` after plugins that add resources; later additions are not discovered.
-- Admin route observation may support intentional list/document/global views when route identity is established from public routing and Payload config.
-- React rerenders and Strict Mode must not duplicate a single view. Revisiting can produce another read.
-- Prefetch, background fetches, relationship population, and public Website/API operations must not become Admin reads.
-- Generic CRUD hooks are not automatically Admin-scoped. `req.user`, referer, cookies, user agent, client headers, and caller-provided context alone do not prove Admin origin.
-- When origin or commit outcome is unknown, suppress the automatic success event.
-- Operation context may suppress analytics or provide untrusted enrichment; it cannot force eligibility, assert Admin provenance, override trusted identity/session, or bypass privacy/consent.
-- Bulk aggregate and affected-resource events are separate only when both add meaning and share a reliable operation correlation ID.
-
-## 7. Identity, properties, and sessions
-
-- Stable distinct ID: `<auth-collection>:<id>` (for example `users:123`). Never use mutable email.
-- Browser identity resets on logout/account switch and avoids unsafe guest/auth routes.
-- Person properties are explicit mappings from PostHog property names to Payload fields or typed resolvers. Never serialize a full user object.
-- Multiple auth collections must remain namespaced. Missing or unsupported values are omitted; callbacks cannot break Admin rendering.
-- Property categories are distinct: person properties describe a person; event properties describe one event; super properties are native SDK event-wide properties; session properties and reserved native properties retain SDK semantics.
-- Event metadata may include applicable `source`, `collection`, `global`, `document_id`, `version_id`, `locale`, `admin_language`, `operation`, `view`, `draft`, `duration_ms`, `affected_count`, `auth_collection`, `schema_version`, and `$session_id`.
-- Do not issue extra database reads solely to enrich events. Changed-field metadata may include permitted field names, never old/new values.
-- Session correlation uses native SDK/session behavior where available. It is not an authorization signal.
+# @klnap/payload-posthog: technical specification
 
-## 8. Privacy, Replay, and consent
+Native PostHog integration for Payload CMS. The plugin implements what is specific to Payload. Everything else is PostHog's native SDK behavior.
 
-Mandatory credential protection covers passwords (including revealed values), OTPs, API keys, access/refresh tokens, invitation/reset secrets, session credentials, authentication headers, and equivalent explicitly sensitive data.
+## 1. Versions verified
 
-- Apply protections before the first recording snapshot. Delayed effects do not protect initial capture.
-- Unknown inputs and custom components use conservative recording treatment until explicitly classified.
-- Ordinary editorial values may be visible only when the application permits recording and the supported native masking mechanism can reliably distinguish them.
-- Sensitive route protection and guest route matching are separate controls. Sanitize URLs before any telemetry and never send credential query values or secret route segments.
-- Review each native channel independently: pageviews/pageleave, autocapture, Replay snapshots, network/console recording, heatmaps, events, person properties, exceptions, Support, and diagnostics.
-- Use native PostHog privacy classes/options and native opt-in/opt-out APIs. Payload-specific restrictions can add protection but cannot remove mandatory restrictions.
-- Consent policy belongs to the host/CMP. Browser opt-out does not imply server capture, Replay, exceptions, flags, or Support are automatically disabled.
-- Verify with synthetic canaries in actual outbound telemetry. Never use production secrets or personal data in tests.
-
-## 9. Native SDKs, Support, source maps, and instrumentation
-
-- Use `@posthog/next`, `posthog-js`, and `posthog-node` directly; avoid duplicate initialization and duplicate pageviews.
-- Native callbacks require a supported module/import-map boundary; never serialize functions or use `eval`.
-- Browser and server custom event access remains native SDK access. No proprietary capture DSL or registry.
-- Support remains optional, lazy-loaded, and uses server-side HMAC identity verification. Native Conversations events are not duplicated or copied into plugin events.
-- Source maps remain the official optional `@posthog/nextjs-config` integration; credentials stay build/server-only.
-- The sole package instrumentation exports are `registerPostHog` and `capturePostHogError`. The host owns `instrumentation.ts` and composes them with other instrumentation.
-- Error Tracking is independent of Admin Product Analytics scope. Capture unexpected errors through native request-error handlers and Payload `afterError` where safe; filter expected validation/access/not-found/business errors by default where context allows.
-- Error capture must not alter responses, exception propagation, startup, or CMS outcomes. Coverage is limited to verified runtimes and paths; caught errors require native manual capture.
-- Payload error hooks await one native immediate-capture attempt to reduce serverless loss; the default timeout is 2 seconds with no retries. Failures are swallowed; `serverOptions` can override both limits.
-- Instrumentation uses explicit/environment-based configuration, idempotent initialization, and native bounded delivery. No OpenTelemetry or proprietary global registry.
-
-The official host composition target is:
-
-```ts
-import type { Instrumentation } from 'next'
-import {
-  registerPostHog,
-  capturePostHogError,
-} from '@klnap/payload-posthog/instrumentation'
-
-export async function register() {
-  await registerPostHog()
-}
-
-export const onRequestError: Instrumentation.onRequestError =
-  async (...args) => {
-    await capturePostHogError(...args)
-  }
-```
-
-`@posthog/next` owns its own cached server client and does not accept a host client instance. Error instrumentation and the Payload provider therefore require one documented source of API key, host, enablement, and privacy configuration to avoid silent drift.
-
-### Verified limitations
-
-- Payload exposes no generic semantic Admin event bus. DOM clicks, field edits, validation UI, and arbitrary custom views cannot be captured reliably through a public universal observer.
-- Generic collection hooks cannot prove Admin provenance or transaction commit. Automatic mutation success events are suppressed unless a supported view/workflow integration establishes both.
-- Browser callback functions cannot cross the Payload server/client provider props. The proposed `clientConfig` module-reference API is not part of the public contract until a real import-map/client initialization path is proven.
-- Field-by-field Replay unmasking is not currently supported. The safe default masks all form inputs and `[contenteditable]` text, so ordinary editable values are not visible in recordings unless a host explicitly weakens the native input-masking policy.
-- Native Node SDK clients are separately owned by Payload's provider integration and Next instrumentation; no injected-client API was found. The design must avoid unnecessary third clients and disclose configuration ownership.
-- Next 16 request-error instrumentation does not report Proxy failures through the inspected handler.
-- Payload plugin order/`RegisteredPlugins` typing is experimental in the verified version. Ordering is a discovery convention, not a guarantee against later plugins.
-
-## 10. Diagnostics and performance
-
-`debug` defaults to `false`. When enabled, diagnostics may report initialization, discovered resources, registered integrations, effective feature states, route classification, identity/session availability, suppression reason codes, and callback failures.
-
-Never log documents, raw events, user records, credentials, tokens, cookies, sensitive URLs, or secret values. Disabled mode has minimal overhead.
-
-Requirements:
-
-- No tables, extra queries, unbounded memory, custom queues, or blocking PostHog network calls in CMS mutation paths.
-- Native SDK batching, bounded deduplication, deterministic sampling, one client per supported runtime ownership model.
-- PostHog/network/SDK/callback failures do not change CMS operation results.
-- Document best-effort delivery, sampling impact on funnels/activity completeness, retention limits, product settings, and high-volume tuning.
-
-## 11. TypeScript and package surface
-
-Use Payload's native plugin/config types and installed native PostHog option types. Type event contexts by runtime and operation; do not expose server documents or request objects to client callbacks. Resource-specific typing should use generated Payload types where practical without requiring duplicate slug declarations.
-
-Planned public entrypoints:
-
-- Root: `PostHog`, public config types, `payloadDistinctId`.
-- `/client`: client hooks, including Support.
-- `/admin`: import-map provider/components.
-- `/instrumentation`: exactly `registerPostHog`, `capturePostHogError`.
-- `/next-config`: native source-map integration.
-- `/server`: only if native shared-client access is needed and proven not already provided.
-
-Audit `/support` and `/support/server`; retain only real consumer contracts. Check packed package boundaries and prevent server modules/credentials from entering client bundles.
-
-## 12. Acceptance and evidence
-
-The final implementation must test config resolution, prefix/name behavior, resource/event defaults, sampling, callback isolation, privacy precedence, identity reset, duplicate read suppression, operation suppression, plugin interoperability, native option typing, exports, build, package packing, and documentation examples.
-
-Runtime tests must inspect actual browser/server telemetry with synthetic canaries for the relevant privacy channels. Mocks alone do not establish runtime privacy or lifecycle behavior.
-
-Every event and capability must be classified in the final coverage matrix as **verified**, **conditional**, **manual/native**, or **unsupported**, with evidence and trigger semantics. A Payload hook alone does not qualify as proof of a committed, Admin-originated action.
-
-Product Analytics and PostHog Activity Logs are best-effort, mutable analytics with product retention/access policies. They are not formal Security Audit Logs, immutable records, or tamper-proof evidence.
-
-### Current implementation and evidence
-
-| Capability | Status | Evidence and limits |
-|---|---|---|
-| Native Admin provider, identity, Support, source-map re-export | Conditional | Unit, type, package, and export checks; behavior depends on host configuration and PostHog project settings. |
-| Native `$pageview` and safe-route autocapture gating | Verified / conditional | A packed Next.js consumer sent `$pageview` to a local sink. A sensitive-query route produced no event; a subsequent safe route omitted the prior query URL from `$referrer`. Explicit native `capture_pageview` opts out of the route guard. |
-| `collection_read` | Verified / conditional | A packed consumer sent the event. The payload contained the collection slug and sanitized route; numeric `depth` and `limit` were absent from `$current_url`. Requires signed-in identity and a classified Admin route. |
-| `document_read` and `global_read` | Verified / conditional | A packed consumer sent both events to the local sink with collection/global slugs and route templates. Numeric document IDs appear separately as `document_id`; opaque IDs stay omitted. |
-| Version history/detail reads | Verified / conditional | A packed consumer sent `document_versions_read`, `document_version_read`, `global_versions_read`, and `global_version_read` to the local sink. Route URLs retain neither ID; numeric document/version IDs use separate event properties. Opaque IDs stay omitted. |
-| Event sampling and configuration | Verified / conditional | Resolver, stable deterministic sampling, and focused tests pass. Runtime behavior follows the resolved policy and consent. |
-| Identity person properties | Verified / conditional | A packed consumer sent `$set` for synthetic user `users:2`. A stale persisted `users:1` identity reset to anonymous on the login route; login and logout transitions returned the correct browser identity state. |
-| Session Replay route gating and input-mask configuration | Verified / conditional | A packed consumer sent real `$snapshot` payloads to the local sink. Password, OTP, API-key, `.ph-mask`, `.ph-no-capture`, `.custom-sensitive`, and `[contenteditable]` canaries were absent. Ordinary unmarked text remained visible. A sensitive-query route produced no snapshot. Broader identity transitions remain conditional. |
-| Browser Error Tracking | Conditional / host-reviewed | With explicit native `capture_exceptions: true`, a synthetic browser exception message reached the local sink unchanged. Browser `before_send` cannot cross Payload's provider boundary; hosts must keep secrets out of browser error messages. |
-| Next.js request-error instrumentation | Verified / conditional | A packed consumer sent a synthetic App Router exception to the local `/batch` sink. The error message and query-token canaries were absent. Proxy failures and caught errors remain uncovered. |
-| Authentication lifecycle events | Verified / conditional | The local sink received `auth_flow_started`, `auth_login_succeeded`, `auth_logout_started`, and `auth_logout_completed`. Login failure, password-reset, activation, verification, and account-switch event semantics remain conditional on supported host flows. |
-| Admin mutations | Unsupported automatically | Collection hooks cannot prove Admin provenance or committed success; native action components expose no shared public completion callback. |
-| Generic Admin activity | Manual/native | Payload has no generic semantic event bus. Hosts can use public UI hooks and native PostHog capture for selected activity; this plugin does not emit these events. |
-| Payload `afterError` capture | Verified / conditional | A synthetic thrown REST endpoint preserved HTTP 500 when the local `/batch` sink returned 503 or exceeded the 2-second request timeout. Three concurrent failures also preserved HTTP 500. Payload exception message canaries were absent. A synthetic 404 returned 404 in 43ms and produced no telemetry. GraphQL and caught-error coverage remain unverified. |
-
-Runtime checks used synthetic data and a local loopback sink only; no production credentials or endpoint received test events.
+Payload and `@payloadcms/ui` 3.94.1, `@posthog/next` 0.11.1 (`@posthog/react`, `@posthog/core` as bundled), `posthog-js` 1.454.2, `posthog-node` 5.74.0, `@posthog/nextjs-config` 1.12.2, Next.js 16.4.5 (the fixture's declared version; `next dev` runs used 16.4.6).
+
+## 2. Scope
+
+- Telemetry runs inside the Payload Admin provider (`admin.components.providers`) for every Admin view, independent of authentication state and of the route. Custom Admin base paths and nested custom views are inside this scope.
+- Arbitrary Next.js routes outside the Admin provider are not instrumented.
+- The package does not classify routes, does not gate telemetry by route or authentication flow, and does not start or stop Replay or autocapture.
+
+## 3. Provider and SDK ownership
+
+- One `PostHogProvider` from `@posthog/next` (`PostHogAdminProvider`). `usePostHog()` returns the single browser instance.
+- `clientOptions` are passed to the provider. Initialization, sessions, persistence, consent, remote configuration, Replay, autocapture, and exception capture belong to posthog-js.
+- Defaults the plugin sets, each overridable by an explicit host value:
+  - `capture_pageview: false` (the pageview owner is the plugin's `PostHogPageView`; see §5).
+  - `save_referrer: false`, `save_campaign_params: false`: referrers and campaign values can carry a previous page's query values.
+  - `disable_capture_url_hashes: true`.
+  - `session_recording.maskAllInputs: false` and `session_recording.maskInputOptions.password: true`. The password setting is forced even when the host overrides other masking options. Host keys such as `maskTextSelector` are preserved.
+  - `disable_conversations: true` unless `payload.conversations` is configured.
+- Not set by the plugin: `autocapture`, `disable_session_recording`, `capture_exceptions`. These keep posthog-js and project defaults.
+- `serverOptions` and `bootstrapFlags` pass to `@posthog/next`. Function-valued options are rejected at configuration time because they cannot cross Payload's serialized provider props.
+
+## 4. Identity
+
+- Canonical distinct ID: `<collection>:<id>`, from the authenticated Payload user returned by `useAuth()`. The collection must be one of the configured auth collections. Identity is independent of the authentication implementation and login routes.
+- Analytics identity (`src/identity/analytics-identity.ts`): `identify(id, mappedProperties)` for the signed-in user. `reset()` before identifying a different user, on logout, and for a persisted Payload identity without a signed-in user. Nothing repeats when identity and mapped properties are unchanged.
+- Person properties (`src/identity/person-properties.ts`): dotted paths, `[]` projection, own-property traversal only, prototype keys rejected, primitives and primitive arrays, and credential-like paths rejected at configuration. Relationships are never populated or queried.
+- Conversations identity (`src/plugin/posthog-identity.tsx`, `src/conversations/verify-identity.ts`): runs after analytics identity, fetches the server-signed identity, applies it only when the request was not aborted, consent still allows capture, and the analytics distinct ID equals the signed one.
+- Consent: `consented` is read at render and rechecked before applying a Conversations identity. Consent changes take effect on the next render. posthog-js 1.454.2 exposes no public opt-out event, so no subscription is possible.
+- Session expiry: a session that expires without a React render or auth-state change is not detected until the next render or reload. The endpoint checks the session only on a new request.
+
+### Verified in packed consumer runtimes
+
+- Login, logout, account switching, custom authentication views, and stale identity responses were exercised with synthetic users. Identity used `<auth-collection>:<id>` and only the active user's mapped properties.
+- The browser uses the same `resolvePersonProperties` resolver as server diagnostics. Payload's `/me` response and `useAuth()` provide the mapped user data; missing and unsupported fields are omitted.
+
+Session expiry without a subsequent render or reload remains unobserved until the next identity check.
+
+## 5. Pageviews
+
+- Default (`capture_pageview` omitted): the plugin mounts `PostHogPageView` from `@posthog/next` with `captureRouteTemplate`. It captures `$pageview` on load and on client navigation, with `$route` (for example `/admin/[...segments]/`) and `$current_url` (full URL).
+- `capture_pageview: true`: posthog-js captures pageviews; the plugin mounts nothing.
+- `capture_pageview: false`: no pageviews.
+- Observed: one `$pageview` per navigation in the packed production build.
+
+Native URL behavior: `$current_url` includes the path and query. Password-reset tokens in the path reach the pageview event (see §8).
+
+## 6. Session Replay and autocapture
+
+- Native. The plugin does not start or stop recording. Recording and autocapture follow the SDK, the project settings, and the host's options.
+- Observed in the packed production build: decoded replay snapshots contained the text, textarea, and rich-text canaries (defaults permit them), and did not contain the password-input canaries; masked `*` runs were present.
+- Observed in the packed production fixture after correcting its deterministic remote-config response: trusted clicks produced `$autocapture` events. This verifies the SDK path in the fixture, not a live PostHog project.
+
+## 7. Error tracking
+
+- Browser: native `capture_exceptions`. Observed: an uncaught exception's message reached the sink (`$exception`).
+- Server: `payload.afterError` hook with `posthog-node`. Expected HTTP 4xx errors are not sent. `shouldCapture` runs after that check. The hook's errors are caught and do not change the response. The actor is the trusted `req.user` collection and ID, falling back to the Admin user collection. Sanitization (`src/plugin/error-privacy.ts`) keeps an allowlist of event properties and redacts exception values.
+- Next.js: `registerPostHog` and `capturePostHogError` wrap `@posthog/next` `createOnRequestError` with the same sanitization. The host composes them into its instrumentation.
+- Not implemented: correlation of server errors with browser session IDs. The package has no verified transport for a session ID.
+
+## 8. URL privacy
+
+### Contract
+
+- Every query parameter value is replaced with `[REDACTED]`; names and order are kept, and repeated names are kept.
+- Fragments are removed. Username and password in the authority are removed.
+- Native Payload credential paths are redacted: the segment after `<admin>/<admin.routes.reset>/` (`forgotPassword.js` builds `${admin.routes.reset}/${token}`) and after `<admin>/<collection>/verify/` (`sendVerificationEmail.js`). The Admin route and reset route names come from the server config (`routes.admin`, `admin.routes.reset`) and are passed to the client as serializable props.
+- Document IDs (ASCII) and ordinary ASCII paths are unchanged. Paths are re-serialized by the WHATWG URL parser, so spaces and non-ASCII characters are percent-encoded (`/docs/a b` becomes `/docs/a%20b`), and dot segments are resolved (`/a/../b` becomes `/b`). No UUID, length, or entropy heuristics are used.
+- Unparseable URL values are dropped, never passed through.
+- Redaction is idempotent and never mutates the original event.
+
+Implementation: `src/redaction/url-redaction.ts` (URL), `src/redaction/event-redaction.ts` (events), `src/redaction/install.ts` (installation).
+
+### Installation
+
+`installNativeUrlRedaction` runs during the render of the plugin's client component, inside the provider. `@posthog/next` initializes the SDK during its own render, and children render after it, so the handler is set before any child effect. `maskAttributeFn` is set in the same `set_config` call. A host `maskAttributeFn` set earlier through `set_config` still runs, on the redacted value. The handler is set with `posthog.set_config({ before_send })`. posthog-js reads `before_send` at capture time (`this.config.before_send` in `Ds()`), so the handler applies to every later capture and to `$set_once` properties. The serialized provider props carry no function.
+
+### Coverage
+
+| Surface | Source | Covered by | Verified |
+| --- | --- | --- | --- |
+| `$current_url`, `$pathname` | pageview, identify, feature flags | `before_send`, URL keys | Canary navigations: reset token, verify token, query values, fragment absent from every decoded event. |
+| `$referrer`, `$initial_referrer`, `$session_entry_url` | referrer attribution | `before_send`, URL keys | Pageviews after credential navigation carry no canary. |
+| `$set`, `$set_once` | identify, first-visit attribution | `before_send`, nested | Scanned in the same sink data. |
+| `$elements[].attr__href`, `attr__src`, `attr__action`, `attr__formaction`, `attr__poster` | autocapture element chains | `before_send` | Unit-tested. Autocapture did not fire in the fixture, so no runtime evidence. Other attributes are not rewritten. |
+| Replay meta `data.href` (type 4) | `$snapshot_data` | `before_send` | Replay meta hrefs are `[REDACTED]` in the sink. |
+| Replay custom `$url_changed` (type 5) | `$snapshot_data` | `before_send` | Caught and fixed during verification: the login redirect carried the query canary before this rule existed. Absent after the fix. |
+| Replay network timing (type 6, `rrweb/network@1`) | `$snapshot_data` | `before_send` | Unit-tested. Not exercised by the fixture's traffic. |
+| Replay incremental DOM mutations (type 3) | plain objects in `$snapshot_data` | `before_send`, URL attributes | Unit-tested. A live probe saw type 3 items as plain objects at `before_send`. |
+| Replay full snapshots (type 2): URL attributes (`href`, `src`, `action`, `formaction`, `poster`) | gzip-compressed string inside each `$snapshot_data` item | native `maskAttributeFn` | Verified: fresh load and returning load (persisted remote config). A reset-token link decoded to `…/reset/[REDACTED]`; no raw canary in either. Recordings that start before the plugin installs are not covered (see limitations). |
+| Replay full snapshots (type 2): other DOM content | same | not rewritten | Text, input values (per masking options), and other attributes are recorded as configured by the host. |
+| Exception messages | `$exception_list` | none | Sent as thrown. Documented. |
+| Local SDK persistence | `$client_session_props`, `$initial_person_info` | not rewritten | Raw values observed locally. See limitations. |
+| Campaign values (`$initial_utm_*`, `$session_entry_utm_*`) | only with host `save_campaign_params: true` | not rewritten | Default `false`. Flattened keys match no URL key. |
+| Logs pipeline | separate `beforeSend` | not covered | The plugin does not enable logs; not verified. |
+
+### Native masking (`mask_personal_data_properties`, `custom_personal_data_properties`)
+
+- Defaults: `mask_personal_data_properties: true`, `disable_capture_url_hashes: true`, and `custom_personal_data_properties` merged from the built-in list and host names (host names first, deduplicated, host array not mutated).
+- Matching in posthog-js 1.454.2 (`co()`): exact, case-sensitive comparison of the text before `=`. No normalization, wildcards, or substring matching. Only listed names are masked, as `<masked>`. Verified in the fresh profile: `token=<masked>` in persisted attribution, while an unlisted `search` value was stored raw.
+- Built-in list: canonical snake_case names (`src/redaction/sensitive-parameters.ts`) expanded to snake, camel, Pascal, kebab, SCREAMING_SNAKE, and SCREAMING-KEBAB spellings. Mixed-case spellings such as `Access_TOKEN` are not derived and not covered natively.
+- Plugin-owned redaction does not depend on names: every query value is redacted, so case and separator handling does not change the outcome. Name normalization would only matter for a decision that does not redact all values, and none exists.
+- Surfaces that honor this option: persisted initial attribution (`$initial_person_info` and the session props built from it). It does not change event `$current_url`, which the plugin redacts.
+- This is URL parameter masking only. It does not sanitize arbitrary event properties, person properties, exception messages, request or response bodies, or Replay DOM content.
+
+### Upstream limitations
+
+- Local persistence: the SDK stores the entry URL of the session, and the first-visit attribution, in local storage. Values are stored before `before_send` runs. The raw reset token and unlisted query values were found in local storage. This is the class of issue reported as https://github.com/PostHog/posthog-js/issues/5362; the local observation is in posthog-js 1.454.2. Browsers with that storage can expose these values to local scripts. The plugin does not patch storage.
+- Parameter names are retained by design, so a name can reveal the kind of value that was sent.
+- Fragment, path, and query redaction cover PostHog's own URL properties. URLs inside custom events sent through `posthog.capture` are not rewritten. Exception messages, element text, element attributes other than `href`, and request bodies are not covered.
+- A host `posthog.set_config({ before_send })` replaces the handler array, which removes the plugin's redaction. posthog-js's `set_config` replacement semantics were read from the source, not exercised at runtime.
+- Recordings that start before the plugin's render-time installation (for example a recorder started during `posthog.init` from persisted state) may not apply `maskAttributeFn` to their full snapshots. Not reproduced on the returning load tested here; the start-timing path is not exhaustively verified.
+- With host `clientOptions.capture_pageview: true`, posthog-js schedules its own pageview after init. If React yields before the plugin's render-time installation, that pageview is not redacted. The default (plugin-owned pageview) is not affected.
+- Full snapshots keep their non-URL DOM content. Text, input values, and other attributes are recorded according to the host's masking options.
+- Next.js `basePath` is handled by matching the Admin prefix at any offset. A path that does not contain the Admin route is not redacted.
+
+## 9. Conversations
+
+- Launcher: `visible` (default) renders the native widget after verified identity. `hidden` never shows the launcher; `open()` opens the panel.
+- Launcher gating is CSS on `html[data-payload-posthog-launcher="visible"]` (`src/conversations/launcher.ts`). The selector targets the parent of `button[aria-label^="Open chat"]` inside `#ph-conversations-widget-container`, verified in posthog-js 1.454.2's conversations bundle. The panel is not matched.
+- `hide()` removes the widget and cancels a queued open. `open()` before SDK readiness is queued and applied once the SDK reports `ready`. There are no timers.
+- `isAvailable` is SDK availability. `canOpen` is verified identity and consent.
+- Verified against the real posthog-js widget, loaded through a deterministic local remote-config response (`conversations.enabled`, `token`) and the SDK's own `conversations.js` module. This is local SDK evidence, not a live PostHog project:
+  - Visible: after verification the launcher shows (`#ph-conversations-widget-container` and the `Open chat` button); a custom button opens the panel; close keeps the launcher; reopen opens the panel; hide removes the widget and the launcher. The `ready` state requires the SDK to be available.
+  - Hidden: no launcher on load or while the panel is open. After close the launcher wrapper stays `display: none`. Reopen and hide behave as in visible mode.
+  - Before the fix in this round, a fresh visible load never showed the launcher: identity verified before the SDK loaded, and `show()` was a no-op. The plugin now shows the widget once the SDK reports ready.
+- Not verified: a live PostHog project (remote configuration, HMAC acceptance, the hosted Conversations backend).
+
+## 10. Public API
+
+| Entry | Exports |
+| --- | --- |
+| `.` | `postHog`, `payloadDistinctId`, type `PayloadPostHogOptions` |
+| `./admin` | `PostHogAdminProvider`, type `PostHogAdminProviderProps` |
+| `./client` | `usePostHogConversations`, types `PostHogConversationsControls`, `PostHogConversationsStatus` |
+| `./next-config` | `withPostHogConfig`, type `PostHogNextConfigOptions` |
+| `./instrumentation` | `capturePostHogError`, `registerPostHog` |
+
+`scripts/check-exports.mjs` and `scripts/exports-snapshot.json` lock the surface.
+
+## 11. Verification
+
+- Unit tests: `bun test src` (person properties, analytics identity, Conversations endpoint, Conversations policy and flush, client option defaults, plugin configuration, error tracking, error privacy, instrumentation).
+- Quality gates: `tsc --noEmit`, `biome check .`, `oxlint`, `knip`, `bun run build`, `check:exports`, `publint`, `attw`.
+- Runtime: `tests/compatibility/bootstrap-runtime.test.ts` (Next.js `next dev`, bootstrap variants).
+- Packed production consumer: `tests/compatibility/payload-production/scripts/run.mjs` packs the package, installs it into an isolated Payload + Next app, and builds production variants. The `omit` variant was served with `next start`; the browser checks above used a headless Chromium over the DevTools protocol against the synthetic sink in the same app.
+- Pre-existing fixture issue: React error #418 (hydration mismatch) also occurs in the baseline build without the plugin. It is not introduced by the plugin.
+
+## 12. Limitations
+
+- Server bootstrap has no Payload user, so flag bootstrap cannot use mapped person properties. Set `bootstrapFlags.personProperties` explicitly when needed.
+- Consent changes take effect on the next React render; the installed SDK exposes no public opt-out event for immediate subscription.
+- Session expiry without a subsequent render or reload is not detected until the next identity check.
+- Browser-local session-entry and first-visit URL persistence can retain raw values before outbound redaction. This accepted PostHog SDK limitation is described in §8.
+- A host-owned `capture_pageview: true` may capture before the plugin installs its redaction callback. A recording started before plugin initialization may also miss the plugin's masking callback.
+- Redaction does not sanitize arbitrary custom-event data, mapped person-property values, exception messages, request bodies, or ordinary Replay text and inputs.
+- The launcher CSS depends on posthog-js's current markup. Verify it on each posthog-js upgrade.
+- No live hosted PostHog project was used. Hosted ingestion, HMAC acceptance, remote configuration, Conversations backend, and symbolication remain unverified.
+
+## 13. Packed runtime evidence
+
+The packed production fixture used synthetic users, synthetic canaries, a local PostHog sink, and headless Chromium. The production runtime checks covered:
+
+- Login, logout, account switching, and stale identity responses. The active Payload user's namespaced ID and mapped properties were used; previous-user properties did not remain after switching.
+- Native pageviews, autocapture, Session Replay, browser exceptions, and Payload REST errors. Text and rich text remained visible by default; password values were masked.
+- Query-value, fragment, reset-token, verification-token, configurable Admin/reset route, and Next.js `basePath` redaction in outbound PostHog URL properties and Replay URL attributes.
+- Replay full and incremental snapshots, URL-change events, and a synthetic unreachable PostHog host. Payload pages and error responses remained available when capture failed.
+- Conversations signing and lifecycle with the real `posthog-js` widget and deterministic local remote configuration. Visible and hidden launchers, custom-button open, close/reopen, hide, logout, and delayed identity-response handling were exercised.
+- Debug off, keyed debug, keyless debug, and keyless operation without debug. Keyless runs installed no provider and made no PostHog requests on a fresh browser profile.
+
+The bootstrap runtime matrix passed all four variants. These are local fixture results, not verification against a hosted PostHog project. See §8-§9 for coverage details and limitations.
+
+## 14. Integration with @klnap/payload-iam (disposable host)
+
+Harness: `tests/compatibility/iam-host` (reproducible fixture and runner `run.sh`). The fixture is a copy of payload-iam's own `admin-host` fixture with `postHog({ apiKey, clientOptions, serverOptions, payload: { identify, conversations } })` added to `plugins`, a synthetic Conversations secret, a dashboard custom-button component, and the sink and remote-config routes from the production fixture. `payload-iam` is packed from its existing `dist` (its `prepack` is not run, so its tree is not modified). Its tree was checked after the run: no file changed. Database: a disposable PostgreSQL 16.16 cluster (embedded-postgres binaries in a scratch directory outside the repository, not Docker). Synthetic accounts from the fixture seed (`e2e-*@stolbek.test`). Browser: headless Chromium over the DevTools protocol. Sink: the host's own `/e`, `/s`, `/batch`, `/flags` routes.
+
+Deviation: OTP sign-in is disabled in the host config (`otp: { enabled: false }`), so password sign-in is used. The OTP code did not reach the email capture log in this harness, and that path was not investigated further. The default payload-iam flow with OTP is not verified here.
+
+Verified:
+
+- Login and automatic identification: sign-in as the writer account identifies `users:<uuid>` with `email` and mapped `name` (from `fullName`). The dashboard pageview carries the signed-in ID; the login-page pageview before sign-in is anonymous.
+- Mapped identity properties: `name` is mapped from `fullName`, `email` is the default mapping. Both appear in `$identify` and `$set`.
+- Logout and identity reset: both sign-out forms were checked against payload-iam's route (`/sign-out`, not `/logout`). In-app navigation to `/sign-out/` (the Next client router) and a full-page load of `/sign-out/` both lead to an anonymous `/login` pageview. The in-app `/sign-out` pageview itself carries the signed-in ID, because it is sent before the logout completes.
+- Account switching: after sign-out, the reader signs in. The reader's `$identify` carries only the reader's properties and the reader's distinct ID. The writer's properties do not reappear.
+- Custom authentication views: payload-iam's sign-in and sign-out views render and report pageviews. The `/login` pageview is anonymous; the Conversations launcher attribute is absent; the signing endpoint returns 401 without a session.
+- Anonymous custom Admin view: the host's custom view `/fixture-help` renders without a session. Its pageview is anonymous (`01a22220-…`), and no identity is set.
+- Conversations identity verification: the signed-in endpoint returns 200 with `{distinctId, hash}`. The hash equals HMAC-SHA256 of the distinct ID under the synthetic secret, computed independently. The endpoint's distinct ID matches the `$identify` distinct ID for the same reader account.
+- Conversations launcher: visible launcher `ready` after verification; the custom button (`#support-open`) opens the panel; close keeps the launcher; reopen opens the panel; hide removes the widget. After sign-out the launcher attribute is absent, the status is loading/unavailable, and the endpoint returns 401.
+- Stale identity across logout: covered by the earlier production-fixture check (held identity request, sign-out, release; no late application). Not repeated here.
+
+Note on the signed-in account for the Conversations run: the browser session was still the reader's from the previous step, so the form sign-in redirected to the dashboard. The verified identity in that run is therefore the reader's. The writer's endpoint result was verified separately.
+
+Not verified in this harness: the hidden launcher on payload-iam (verified on the production fixture in §9), the default OTP flow of payload-iam (see deviation), and any live PostHog project.
+
+Changes to the fixtures needed to make this run possible (not to the package): the sink routes accept raw base64 bodies in addition to `data=` form bodies (the SDK's base64 mode was rejected before); the production fixture's static route serves `conversations.js` (the widget module); the production fixture's remote config enables Conversations with a synthetic token.
+
+## 15. Debug diagnostics
+
+Public option: `debug?: boolean` (default `false`). `apiKey` is optional; without it, `debug: true` runs keyless. Outside debug mode the existing semantics are unchanged: `enabled: false` or a missing key registers nothing.
+
+Design:
+
+- Server-side only. Output goes to the Payload process terminal through `console.log` and `console.table`. Nothing is sent to a browser-to-server endpoint, and nothing is sent to PostHog by the diagnostics.
+- Keyless mode (`apiKey` missing): no `PostHogAdminProvider`, no `afterError` capture, no Conversations endpoint, and no SDK initialization. The plugin adds only identity diagnostics to each auth collection's `afterMe` hook. Payload runs `afterMe` on `/me`; the hook reads the user returned for that request, so Payload read access applies.
+- Keyed debug: the same identity diagnostics, plus a startup mode line, the configured mapping table, and Conversations status. The signing endpoint logs its outcome per request.
+- Mapped values use the same `resolvePersonProperties` resolver as browser identification. Arrays retain their value types; missing or unsupported values are shown as `omitted (missing or unsupported)`.
+- Diagnostics append to existing consumer `afterMe` hooks and return no replacement response. Diagnostic exceptions are swallowed so they cannot break authentication responses.
+- Repeated output is suppressed. Deduplication state lives on `globalThis` for cross-chunk consistency, stores only SHA-256 digests, and is capped at 64 entries.
+- Resolved and transmitted identity are distinct messages. Keyless: `Not transmitted: keyless mode.` Keyed: `Identified in the browser when consent allows.` The server cannot see consent or the browser's anonymous ID, and says so.
+- The `/me` response describes values available to browser identification. It does not prove that consent allowed a capture or that PostHog received it.
+
+Security:
+
+- Never printed: credentials, tokens, HMAC values or signatures, authorization headers, the Conversations secret, and complete user objects. Tests assert absence of canary values and of 64-hex strings in endpoint logs.
+- Printed: explicitly mapped person properties, including email by default. Output can contain personal data; the README warns against shared logs.
+- The sensitive-data policy from the URL and identity work still applies: credential-like mapping paths are rejected at configuration time, and only mapped properties are read.
+
+Verified (packed production fixture, synthetic accounts, local sink):
+
+| Mode | Terminal | Telemetry | PostHog in page |
+| --- | --- | --- | --- |
+| Debug off | no `[payload-posthog]` lines | 7 events | yes |
+| Debug on, key | mode line once; mapping table; resolved identity table with `email` and `name` resolved and `roles` omitted; Conversations status; no signature | 7 events | yes |
+| Keyless debug (`PH_KEYLESS=1 PH_DEBUG=1`) | mode line once; resolved identity table marked `Not transmitted: keyless mode.` | 0 events; no `/e`, `/s`, `/array`, or `/flags` requests on a fresh profile | no |
+| Keyless, no debug | no `[payload-posthog]` lines; page works | 0 events | no |
+
+Notes from the runs:
+
+- The `new Date()` prerender message in the server log also appears with debug off and in the baseline. It is not produced by this change.
+- One replay batch reached the sink during a keyless run that reused the browser profile of the previous keyed session. It was not reproduced on a fresh profile, so it is attributed to the earlier page's queued data, not to the keyless integration.
+- `afterMe` is the Payload hook that runs on `/me`. Anonymous visitors produce no per-user identity line; the server reports the anonymous state once, and the browser SDK holds the anonymous ID.
+- The Conversations signing endpoint reports each distinct ID/status state once while it remains in the bounded deduplication cache.
+
+Limits:
+
+- Output is per process and in memory. Log rotation and retention are the host's responsibility.
+- The dedupe cache holds at most 64 digest pairs; eviction may cause an unchanged identity or Conversations status to be logged again.
+- The packed production fixture did not populate its `roles` mapping. Populated array, nested, and omitted-value behavior has unit coverage, not packed-browser runtime coverage.
+- The server cannot observe PostHog's acceptance of a transmission. Diagnostics report what the plugin resolved and what the browser is configured to send, not delivery.

@@ -26,4 +26,15 @@ describe('Payload error tracking', () => {
       } as never)
     ).resolves.toBeUndefined()
   })
+
+  it('does not hold the Payload error response while PostHog is unreachable', async () => {
+    const hook = createPayloadAfterErrorHook({
+      apiKey: 'phc_public',
+      // Closed local port: the capture fails or times out, and the hook must not wait for it.
+      serverOptions: { host: 'http://127.0.0.1:9', requestTimeout: 2_000 },
+    })
+    const started = performance.now()
+    await hook({ error: new Error('synthetic-500'), req: { user: null } } as never)
+    expect(performance.now() - started).toBeLessThan(500)
+  })
 })

@@ -1,36 +1,106 @@
-import type { Config, Plugin } from 'payload'
+import type { CollectionConfig, Config, Plugin } from 'payload'
 import {
-  createPayloadSupportIdentityEndpoint,
-  POSTHOG_SUPPORT_IDENTITY_PATH,
-  postHogSupportIdentityURL,
-} from '../support/payload-identity-endpoint'
+  CONVERSATIONS_IDENTITY_PATH,
+  conversationsIdentityURL,
+  createConversationsIdentityEndpoint,
+} from '../conversations/identity-endpoint'
+import {
+  createIdentityDiagnosticsHook,
+  logConfiguredMappings,
+  logConversationsConfig,
+  logPluginMode,
+} from '../diagnostics/debug'
+import { isCredentialPath } from '../identity/person-properties'
 import { assertSerializable } from './assert-serializable'
-import { normalizeCaptureConfiguration, resolveAdminViewCapture } from './capture-config'
 import { createPayloadAfterErrorHook } from './payload-error-tracking'
 import type { PayloadPostHogOptions } from './types'
 
 const PROVIDER = '@klnap/payload-posthog/admin#PostHogAdminProvider'
 
+/** Default person property mapping. Identity mapping merges over it. */
+const DEFAULT_IDENTIFY_PROPERTIES = { email: 'email' } as const
+
+/** Adds native PostHog analytics, Session Replay, and error tracking to Payload Admin. */
 export function postHog(options: PayloadPostHogOptions): Plugin {
   return (config: Config): Config => {
     const {
       enabled = true,
       apiKey,
+      debug = false,
       clientOptions,
       serverOptions,
-      bootstrapFlags = true,
+      bootstrapFlags,
       payload = {},
     } = options
-    if (!enabled || !apiKey) return config
+    if (!enabled) {
+      if (debug) logPluginMode('disabled')
+      return config
+    }
+    if (!apiKey && !debug) return config
     assertSerializable(clientOptions, 'clientOptions')
-    normalizeCaptureConfiguration(payload.capture)
     assertSerializable(serverOptions, 'serverOptions')
-    const collectionSlugs = config.collections?.map(({ slug }) => slug) ?? []
-    const globalSlugs = config.globals?.map(({ slug }) => slug) ?? []
-    const adminViewCapture = resolveAdminViewCapture(payload.capture, collectionSlugs, globalSlugs)
-    assertSerializable(adminViewCapture, 'payload.capture')
-    const errorTrackingEnabled = payload.errorTracking?.enabled ?? true
-    const configWithErrorTracking = errorTrackingEnabled
+
+    const authCollections =
+      config.collections
+        ?.filter((collection) => Boolean(collection.auth))
+        .map(({ slug }) => slug) ?? []
+    const identityCollection = config.admin?.user ?? authCollections[0]
+
+    const identifyEnabled = payload.identify?.enabled ?? true
+    const identifyProperties = { ...DEFAULT_IDENTIFY_PROPERTIES, ...payload.identify?.properties }
+    for (const [name, path] of Object.entries(identifyProperties)) {
+      if (isCredentialPath(path)) {
+        throw new Error(`PostHog: identify property "${name}" maps to a credential field.`)
+      }
+    }
+
+    const conversations = payload.conversations
+    if (conversations) {
+      // Conversations verifies the same distinct ID that analytics identifies, so identity must run.
+      if (!identifyEnabled) {
+        throw new Error('PostHog: Conversations requires payload.identify to be enabled.')
+      }
+      if (authCollections.length === 0) {
+        throw new Error('PostHog: Conversations requires an authenticated Payload collection.')
+      }
+      if (typeof conversations.secret !== 'string' || conversations.secret.length === 0) {
+        throw new Error('PostHog: payload.conversations.secret must be a non-empty string.')
+      }
+      if (
+        config.endpoints?.some(
+          (endpoint) =>
+            endpoint.method === 'get' &&
+            `/${endpoint.path.split('/').filter(Boolean).join('/')}` === CONVERSATIONS_IDENTITY_PATH
+        )
+      ) {
+        throw new Error(
+          `PostHog: GET ${CONVERSATIONS_IDENTITY_PATH} conflicts with an existing Payload endpoint.`
+        )
+      }
+    }
+
+    const identityDiagnostics: Record<string, string> | null =
+      debug && identifyEnabled ? identifyProperties : null
+
+    if (!apiKey) {
+      // Keyless debug: identity diagnostics only. No provider, no error capture, no endpoint.
+      logPluginMode('keyless')
+      return withIdentityDiagnostics(config, identityDiagnostics, 'Not transmitted: keyless mode.')
+    }
+    if (debug) {
+      logPluginMode('enabled')
+      if (identityDiagnostics) logConfiguredMappings(identityDiagnostics)
+      if (conversations) logConversationsConfig(conversations.launcher ?? 'visible')
+    }
+
+    // Native Payload credential paths are built from these routes (see docs/specification.md).
+    const nativeRoutes = {
+      adminRoute: config.routes?.admin ?? '/admin',
+      resetRoute: config.admin?.routes?.reset ?? '/reset',
+    }
+
+    const errorTracking = payload.errorTracking?.enabled ?? true
+    const configWithErrorTracking: Config = errorTracking
       ? {
           ...config,
           hooks: {
@@ -40,64 +110,31 @@ export function postHog(options: PayloadPostHogOptions): Plugin {
               createPayloadAfterErrorHook({
                 apiKey,
                 serverOptions,
-                authCollection: authCollectionsFrom(config.collections),
+                authCollection: identityCollection,
                 shouldCapture: payload.errorTracking?.shouldCapture,
               }),
             ],
           },
         }
       : config
-    const hasPayloadFeatures =
-      (payload.identify?.enabled ?? true) ||
-      (payload.guestTracking?.enabled ?? true) ||
-      payload.support !== undefined ||
-      [
-        ...Object.values(adminViewCapture.collections),
-        ...Object.values(adminViewCapture.globals),
-      ].some((resource) => Object.values(resource).some((event) => event.enabled))
-    const hasNativeFeatures =
-      clientOptions?.capture_pageview !== false ||
-      clientOptions?.autocapture !== false ||
-      clientOptions?.capture_exceptions !== false ||
-      clientOptions?.disable_session_recording !== true ||
-      clientOptions?.disable_conversations === false ||
-      bootstrapFlags !== false
-    if (!hasPayloadFeatures && !hasNativeFeatures) return configWithErrorTracking
 
-    const authCollections =
-      config.collections
-        ?.filter((collection) => Boolean(collection.auth))
-        .map(({ slug }) => slug) ?? []
-    const identityCollection = config.admin?.user ?? authCollections[0]
-    const { support } = payload
-    if (support) {
-      if (authCollections.length === 0) {
-        throw new Error('PostHog: Support requires an authenticated Payload collection.')
-      }
-      if (
-        config.endpoints?.some(
-          (endpoint) =>
-            endpoint.method === 'get' &&
-            `/${endpoint.path.split('/').filter(Boolean).join('/')}` ===
-              POSTHOG_SUPPORT_IDENTITY_PATH
+    const withDiagnostics = debug
+      ? withIdentityDiagnostics(
+          configWithErrorTracking,
+          identityDiagnostics ?? null,
+          'Identified in the browser when consent allows.'
         )
-      ) {
-        throw new Error(
-          `PostHog: GET ${POSTHOG_SUPPORT_IDENTITY_PATH} conflicts with an existing Payload endpoint.`
-        )
-      }
-    }
+      : configWithErrorTracking
 
-    const providers = config.admin?.components?.providers ?? []
     return {
-      ...configWithErrorTracking,
-      ...(support
+      ...withDiagnostics,
+      ...(conversations
         ? {
             endpoints: [
-              createPayloadSupportIdentityEndpoint({
-                adminUserCollection: identityCollection,
+              createConversationsIdentityEndpoint({
                 authCollections,
-                getSecret: () => support.identitySecret,
+                getSecret: () => conversations.secret,
+                debug,
               }),
               ...(config.endpoints ?? []),
             ],
@@ -108,32 +145,25 @@ export function postHog(options: PayloadPostHogOptions): Plugin {
         components: {
           ...config.admin?.components,
           providers: [
-            ...providers,
+            ...(config.admin?.components?.providers ?? []),
             {
               path: PROVIDER,
               clientProps: {
                 apiKey,
+                nativeRoutes,
                 clientOptions,
-                identityCollection,
-                adminViewCapture,
-                identify:
-                  (payload.identify?.enabled ?? true)
-                    ? { properties: { email: 'email', ...payload.identify?.properties } }
-                    : null,
-                guestTracking: {
-                  enabled: payload.guestTracking?.enabled ?? true,
-                  paths: payload.guestTracking?.paths ?? [],
-                },
-                support: support
+                bootstrapFlags,
+                identityCollections: authCollections,
+                identify: identifyEnabled ? { properties: identifyProperties } : null,
+                conversations: conversations
                   ? {
-                      launcher: support.launcher ?? 'visible',
-                      endpoint: postHogSupportIdentityURL(config.routes?.api),
+                      endpoint: conversationsIdentityURL(config.routes?.api),
+                      launcher: conversations.launcher ?? 'visible',
                     }
                   : null,
               },
               serverProps: {
                 serverOptions,
-                bootstrapFlags,
               },
             },
           ],
@@ -143,7 +173,23 @@ export function postHog(options: PayloadPostHogOptions): Plugin {
   }
 }
 
-function authCollectionsFrom(collections: Config['collections']): string | undefined {
-  const authCollections = collections?.filter(({ auth }) => Boolean(auth)) ?? []
-  return authCollections.length === 1 ? authCollections[0]?.slug : undefined
+/** Adds the server-side identity diagnostics to every auth collection's `me` response (debug only). */
+function withIdentityDiagnostics(
+  config: Config,
+  mapping: Readonly<Record<string, string>> | null,
+  transmitted: string
+): Config {
+  type AfterMeHook = NonNullable<NonNullable<CollectionConfig['hooks']>['afterMe']>[number]
+  const hook = createIdentityDiagnosticsHook(mapping, transmitted) as AfterMeHook
+  return {
+    ...config,
+    collections: config.collections?.map((collection) =>
+      collection.auth
+        ? {
+            ...collection,
+            hooks: { ...collection.hooks, afterMe: [...(collection.hooks?.afterMe ?? []), hook] },
+          }
+        : collection
+    ),
+  }
 }

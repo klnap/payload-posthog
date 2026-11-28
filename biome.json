@@ -1,6 +1,10 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
-  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
   "files": {
     "ignoreUnknown": true,
     "includes": [
@@ -12,7 +16,13 @@
       "!**/*.tsbuildinfo",
       "!!**/docs",
       "!**/*-tailwind.css",
-      "!!**/.well-known/workflow"
+      "!!**/.well-known/workflow",
+      "!!**/.changeset/*.md",
+      "!!**/.next*",
+      "!!**/.test-output",
+      "!!**/.serena",
+      "!!**/tests/compatibility/next",
+      "!!**/tests/compatibility/payload-production"
     ]
   },
   "formatter": {
@@ -30,12 +40,18 @@
       "arrowParentheses": "always"
     }
   },
-  "css": { "parser": { "tailwindDirectives": true } },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
   "linter": {
     "enabled": true,
     "rules": {
       "preset": "recommended",
-      "a11y": { "preset": "none" },
+      "a11y": {
+        "preset": "none"
+      },
       "correctness": {
         "noUnusedVariables": "warn",
         "noUnusedImports": "warn",
@@ -43,8 +59,12 @@
         "noUnknownFunction": "off",
         "useExhaustiveDependencies": "warn"
       },
-      "security": { "noDangerouslySetInnerHtml": "off" },
-      "performance": { "noImgElement": "off" },
+      "security": {
+        "noDangerouslySetInnerHtml": "off"
+      },
+      "performance": {
+        "noImgElement": "off"
+      },
       "style": {
         "useConst": "error",
         "useTemplate": "warn",
@@ -68,11 +88,23 @@
   "overrides": [
     {
       "includes": ["scripts/**", "**/*.test.*", "**/*.spec.*", "tests/**"],
-      "linter": { "rules": { "suspicious": { "noConsole": "off" } } }
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
     },
     {
       "includes": ["**/*.config.{js,ts,mjs,cjs}", "**/app/**/page.tsx", "**/app/**/layout.tsx"],
-      "linter": { "rules": { "style": { "noDefaultExport": "off" } } }
+      "linter": {
+        "rules": {
+          "style": {
+            "noDefaultExport": "off"
+          }
+        }
+      }
     }
   ]
 }

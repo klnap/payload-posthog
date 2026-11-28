@@ -121,6 +121,23 @@ function inspect(directory) {
 }
 
 const dist = join(root, 'dist')
+// Every built module must come from a source file; stale output from removed sources must fail.
+function checkStaleOutput(directory) {
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const file = join(directory, entry.name)
+    if (entry.isDirectory()) checkStaleOutput(file)
+    else if (entry.name.endsWith('.js')) {
+      const relative = file.slice(dist.length + 1, -'.js'.length)
+      if (
+        !existsSync(join(root, 'src', `${relative}.ts`)) &&
+        !existsSync(join(root, 'src', `${relative}.tsx`))
+      ) {
+        failures.push(`stale build output without source: dist/${relative}.js`)
+      }
+    }
+  }
+}
+if (existsSync(dist)) checkStaleOutput(dist)
 if (existsSync(dist)) inspect(dist)
 else failures.push('missing dist directory; run build first')
 

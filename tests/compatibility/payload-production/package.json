@@ -1,0 +1,22 @@
+{
+  "name": "payload-posthog-production-fixture",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@payloadcms/db-sqlite": "3.94.1",
+    "@payloadcms/next": "3.94.1",
+    "@payloadcms/ui": "3.94.1",
+    "@klnap/payload-posthog": "file:./payload-posthog.tgz",
+    "@posthog/next": "0.11.1",
+    "next": "16.4.5",
+    "payload": "3.94.1",
+    "posthog-js": "1.454.2",
+    "posthog-node": "5.74.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  }
+}

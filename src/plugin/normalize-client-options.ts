@@ -1,38 +1,38 @@
 import type { PostHogConfig } from 'posthog-js'
+import { mergeSensitiveParameters } from '../redaction/sensitive-parameters'
 
 /**
- * Sets only what the plugin needs to stay predictable. Every other option keeps its native default.
+ * Applies the plugin's few defaults. PostHog keeps ownership of initialization, pageviews,
+ * autocapture, Replay, consent, and remote configuration; explicit host values always win.
  */
 export function normalizeClientOptions(
   clientOptions: Partial<PostHogConfig> = {},
-  supportEnabled: boolean
+  conversationsEnabled: boolean
 ): Partial<PostHogConfig> {
+  const recording = clientOptions.session_recording
   return {
     ...clientOptions,
-    // Explicit false: the privacy-aware tracker owns pageviews unless the host sets capture_pageview itself.
+    // Pageviews have one owner: the PostHogPageView mounted by the plugin, unless the host sets this.
     capture_pageview: clientOptions.capture_pageview ?? false,
-    // Native referrers can carry secrets from a previous URL.
-    save_referrer: false,
-    // Campaign values can contain sensitive query parameters and persist across events.
-    save_campaign_params: false,
-    // The route tracker enables autocapture only after classifying the current Admin route.
-    autocapture: false,
-    // Prevent an initial Replay snapshot before the route and user are classified.
-    disable_session_recording: true,
-    // Hides URL hashes from captured URLs. Native default is off until defaults 2026-06-25.
+    // Referrers can carry a previous page's query values; campaign values persist across events.
+    save_referrer: clientOptions.save_referrer ?? false,
+    save_campaign_params: clientOptions.save_campaign_params ?? false,
+    // Keeps URL hashes, which can hold tokens, out of captured URLs.
     disable_capture_url_hashes: clientOptions.disable_capture_url_hashes ?? true,
+    // Native persisted attribution masks these parameter names (exact, case-sensitive match).
+    mask_personal_data_properties: clientOptions.mask_personal_data_properties ?? true,
+    custom_personal_data_properties: mergeSensitiveParameters(
+      clientOptions.custom_personal_data_properties
+    ),
     session_recording: {
-      ...clientOptions.session_recording,
-      // Editable content can contain sensitive values outside native form controls.
-      maskTextSelector: [clientOptions.session_recording?.maskTextSelector, '[contenteditable]']
-        .filter(Boolean)
-        .join(', '),
-      // Fail closed for unclassified inputs; the host can explicitly choose a native policy.
-      maskAllInputs: clientOptions.session_recording?.maskAllInputs ?? true,
-      // Passwords remain protected even when the host overrides other input masking options.
-      maskInputOptions: { ...clientOptions.session_recording?.maskInputOptions, password: true },
+      ...recording,
+      maskAllInputs: recording?.maskAllInputs ?? false,
+      // Password inputs stay masked even when the host changes other input masking options.
+      maskInputOptions: { ...recording?.maskInputOptions, password: true },
     },
-    // Conversations is part of Support, so it stays off until Support is configured.
-    disable_conversations: clientOptions.disable_conversations ?? !supportEnabled,
+    // Conversations stays off unless configured: its launcher is gated only when the plugin manages it.
+    disable_conversations: conversationsEnabled
+      ? (clientOptions.disable_conversations ?? false)
+      : true,
   }
 }

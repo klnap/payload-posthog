@@ -5,7 +5,7 @@ bun install
 bun run lint
 bun run typecheck
 bun run knip
-bun test src tests/unit
+bun test src
 bun run check:exports
 bun run build
 ```

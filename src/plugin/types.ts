@@ -1,16 +1,8 @@
-import type { PostHogProviderProps } from '@posthog/next'
+import type { BootstrapFlagsConfig, PostHogProviderProps } from '@posthog/next'
 import type { PostHogOptions } from 'posthog-node'
-import type { CaptureConfiguration } from './capture-config'
 import type { PayloadErrorCaptureContext } from './payload-error-tracking'
 
-type NativeOptions = Pick<
-  PostHogProviderProps,
-  'clientOptions' | 'serverOptions' | 'bootstrapFlags'
->
-type SerializableClientOptions = Omit<
-  NonNullable<NativeOptions['clientOptions']>,
-  '__extensionClasses'
->
+type NativeClientOptions = NonNullable<PostHogProviderProps['clientOptions']>
 
 /**
  * Removes function-valued keys. Options cross the Payload server-to-client boundary as props,
@@ -21,42 +13,51 @@ type SerializableOptions<T> = {
 }
 
 export type PayloadPostHogOptions = {
+  /**
+   * PostHog project API key, public by design (the value of `NEXT_PUBLIC_POSTHOG_KEY`).
+   * Required unless `debug` is true, which runs keyless diagnostics only.
+   */
+  apiKey?: string
+  /**
+   * Terminal diagnostics from the Payload server: configuration, identity resolution, mapped
+   * properties, and Conversations status. Keyless when no `apiKey` is set. Defaults to false.
+   * Output may contain personal data. Secrets and signatures are never printed.
+   */
+  debug?: boolean
   /** Set to false to register nothing. Defaults to true. */
   enabled?: boolean
-  apiKey: string
-  clientOptions?: SerializableOptions<SerializableClientOptions>
+  /** Native posthog-js options, merged over the plugin defaults. Must be serializable. */
+  clientOptions?: SerializableOptions<Omit<NativeClientOptions, '__extensionClasses'>>
+  /** Native posthog-node options for server-side capture. Server-only. */
   serverOptions?: SerializableOptions<Partial<PostHogOptions>>
-  /** Forwarded to `PostHogProvider`. Defaults to `true`. */
-  bootstrapFlags?: NativeOptions['bootstrapFlags']
+  /**
+   * Native server-side feature flag bootstrap. Omit it to evaluate flags in the browser.
+   * Setting it makes Admin routes request-time rendered.
+   */
+  bootstrapFlags?: boolean | BootstrapFlagsConfig
   payload?: {
-    errorTracking?: {
-      /** Capture unexpected Payload REST errors. Defaults to true. */
-      enabled?: boolean
-      /** Additional server-only filter. Expected HTTP 4xx errors remain suppressed. */
-      shouldCapture?: (context: PayloadErrorCaptureContext) => boolean | Promise<boolean>
-    }
+    /** Identifies the authenticated Admin user. Defaults to enabled. */
     identify?: {
-      /** Identify authenticated Payload users. Defaults to true. */
       enabled?: boolean
-      /** Maps PostHog person property names to Payload user field names. Email is always mapped. */
+      /**
+       * PostHog person properties resolved from the Payload user. Keys are PostHog property
+       * names; values are dotted field paths such as `profile.fullName`, `roles`, or `roles[].name`.
+       * `email` is mapped by default.
+       */
       properties?: Record<string, string>
     }
-    guestTracking?: {
-      /**
-       * Guest tracking on guest routes: Payload's public auth routes plus `paths`. Set false to turn off
-       * authentication lifecycle events and Session Replay for guests. Authenticated users are always tracked.
-       * Defaults to true.
-       */
+    /** Captures unexpected Payload REST errors on the server. Defaults to enabled. */
+    errorTracking?: {
       enabled?: boolean
-      /** Extra public Admin paths treated as guest routes, relative to the Admin route. */
-      paths?: string[]
+      /** Server-only filter applied after expected HTTP 4xx errors are suppressed. */
+      shouldCapture?: (context: PayloadErrorCaptureContext) => boolean | Promise<boolean>
     }
-    /** Enables authenticated PostHog Support. Omit to keep Support disabled. */
-    support?: {
+    /** Authenticated PostHog Conversations. Omit to keep Conversations disabled. */
+    conversations?: {
+      /** Conversations identity verification secret. Server-only; never sent to the browser. */
+      secret: string
+      /** `visible` (default) renders the native launcher. `hidden` leaves opening to your UI. */
       launcher?: 'visible' | 'hidden'
-      /** PostHog Support identity verification secret. Keep it server-only. */
-      identitySecret: string
     }
-    capture?: CaptureConfiguration
   }
 }

@@ -1,58 +1,13 @@
 # @klnap/payload-posthog
 
-Native PostHog for Payload Admin. It identifies signed-in editors, tracks safe authentication flows, and supports authenticated PostHog Conversations.
+Native PostHog integration for Payload CMS.
 
-A standard PostHog install does not know Payload. Admin is its own React tree with its own sign-in, so user identity, auth events and Support need wiring. This plugin provides that wiring. It mounts the official `PostHogProvider` from `@posthog/next` in Payload's Admin providers and passes your native `posthog-js` and `posthog-node` options straight through. It is not an analytics SDK of its own.
-
-## Features
-
-| Capability                           | Provided by                                                                  |
-| ------------------------------------ | ---------------------------------------------------------------------------- |
-| Product analytics and autocapture    | Native `posthog-js`; autocapture runs only on classified safe Admin routes   |
-| Pageviews                            | Privacy-aware route tracker (see [Pageviews](#pageviews))                    |
-| Admin resource reads                 | Plugin; lists, documents, globals, and version views                         |
-| Automatic user identification        | Plugin                                                                       |
-| Authentication lifecycle events      | Plugin                                                                       |
-| Guest tracking on public auth routes | Plugin (`payload.guestTracking`)                                             |
-| Session Replay                       | Native, with guest rules from the plugin                                     |
-| Browser error tracking               | Native `posthog-js` (`capture_exceptions`)                                   |
-| Next.js request errors               | Opt-in instrumentation helpers from `@klnap/payload-posthog/instrumentation` |
-| Payload routed errors                | Plugin root `afterError` hook; unexpected errors only                        |
-| Feature flags                        | Native `@posthog/next` hooks and `bootstrapFlags`                            |
-| Authenticated Support                | Plugin identity endpoint and native Conversations                            |
-| Source-map upload                    | Native `@posthog/nextjs-config`, re-exported                                 |
-
-Products such as Replay, Error Tracking, Surveys or Feature Flags depend on your SDK options and your PostHog project settings. The plugin does not turn any of them on by itself.
-
-## Install
-
-```bash
-bun add @klnap/payload-posthog
-```
-
-or
-
-```bash
-npm install @klnap/payload-posthog
-```
-
-Peer dependencies, from the package manifest:
-
-- `payload` and `@payloadcms/ui` `>=3.94.1 <4`
-- `next` `>=16.4.5 <17`
-- `react` and `react-dom` `^19.3.1`
-- `@posthog/next` `>=0.11.0 <1`. It is a 0.x release, so minor versions may change the API.
-- `posthog-js` `>=1.444.0 <2` and `posthog-node` `>=5.61.2 <6`
-- `@posthog/nextjs-config` `>=1.12.2 <2`, optional, only for source maps
-
-Node `^24.22.3 || >=26.13.1`.
-
-## Quick start
+The plugin integrates PostHog into Payload Admin so you do not need to assemble the provider, identity synchronization, error hooks, or Conversations identity endpoint yourself.
 
 ```ts
 // payload.config.ts
-import { postHog } from '@klnap/payload-posthog'
 import { buildConfig } from 'payload'
+import { postHog } from '@klnap/payload-posthog'
 
 export default buildConfig({
   plugins: [
@@ -60,313 +15,141 @@ export default buildConfig({
       apiKey: process.env.NEXT_PUBLIC_POSTHOG_KEY!,
       clientOptions: {
         api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
-        ui_host: 'https://eu.posthog.com',
       },
     }),
   ],
 })
 ```
 
-Set these environment variables:
+## Why?
 
-- `NEXT_PUBLIC_POSTHOG_KEY`: your project API key (`phc_…`).
-- `NEXT_PUBLIC_POSTHOG_HOST`: your PostHog ingestion host, for example `https://eu.i.posthog.com`.
+Payload knows which user is signed in; PostHog can connect that identity with analytics, Error Tracking, Session Replay, Feature Flags, and Conversations. This helps teams investigate an error in the context of the affected user's session without replacing Payload authentication or adding a separate Admin provider.
 
-Then regenerate Payload's import map so it can resolve the plugin's Admin provider:
+PostHog products still depend on your project settings, consent policy, and native SDK configuration. This package does not replace every observability or support tool.
 
-```bash
-bunx payload generate:importmap
+## Install
+
+```sh
+bun add @klnap/payload-posthog
 ```
 
-Place `postHog()` after plugins that add collections or globals. It resolves read-event coverage from resources present when Payload applies each plugin.
+```sh
+npm install @klnap/payload-posthog
+```
 
-## Configuration
+Required peers: `payload`, `@payloadcms/ui`, `next`, `react`, `react-dom`, `@posthog/next`, `posthog-js`, and `posthog-node`. `@posthog/nextjs-config` is optional and only needed for source-map upload. Supported versions are listed in [`package.json`](./package.json).
 
-`postHog(options)` takes these top-level options:
+No manual provider, Payload layout edit, stylesheet import, or `transpilePackages` entry is required.
 
-| Option           | Forwarded to                       | Notes                                                                                             |
-| ---------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `apiKey`         | `PostHogProvider`                  | Required.                                                                                         |
-| `clientOptions`  | `PostHogProvider` → `posthog-js`   | Native options. Function values are rejected.                                                     |
-| `serverOptions`  | `PostHogProvider` → `posthog-node` | Native options, for example `host` for server-side flag evaluation. Function values are rejected. |
-| `bootstrapFlags` | `PostHogProvider`                  | Native option. The plugin defaults it to `true`. See [Feature flags](#native-posthog-apis).       |
-| `enabled`        | —                                  | `false` registers nothing. Defaults to `true`.                                                    |
-| `payload`        | —                                  | Payload-specific options: `identify`, `guestTracking`, `support`, `capture`, `errorTracking`.     |
+## Identify Payload users
 
-`payload.capture` configures Admin list, document, global, and version-view events: `collection_read`, `document_read`, `global_read`, `document_versions_read`, `document_version_read`, `global_versions_read`, and `global_version_read`. It does not capture mutations or general Admin activity.
-
-Read events use route placeholders in `$current_url`. Numeric document and version IDs appear in separate properties; opaque IDs stay omitted.
+Signed-in Admin users are identified with a namespaced ID such as `users:123`. Email maps by default. Add only the person properties your team needs:
 
 ```ts
 postHog({
   apiKey: process.env.NEXT_PUBLIC_POSTHOG_KEY!,
   payload: {
-    capture: {
-      collections: { defaults: { operations: ['listRead', 'read'] } },
-      globals: { defaults: false },
+    identify: {
+      properties: {
+        name: 'profile.fullName',
+        organization_id: 'organization.id',
+        roles: 'roles[].name',
+      },
     },
   },
 })
 ```
 
-Read events require a signed-in Admin identity and a classified resource route. Version events include only the resource slug and sanitized route template, never document or version IDs. Defaults enable eligible reads; use `defaults: false` to opt out by resource category. Event settings support custom names, properties, and deterministic `sampleRate` values.
+Mappings support scalar values, primitive arrays, dotted paths, and `[]` array projection over populated relationships. Missing or unsupported values are omitted. Logout and account switching reset stale Payload identity before the next identity is applied. See [Configuration and identification](docs/configuration-and-identification.md).
 
-Option names, types and defaults follow the installed upstream types. See [PostHogConfig](https://posthog.com/docs/references/posthog-js/types/PostHogConfig), [PostHogOptions](https://posthog.com/docs/references/posthog-node/types/PostHogOptions) and the [`@posthog/next` reference](https://posthog.com/docs/libraries/next-js/posthog-next) for the full list.
+## Error Tracking and Session Replay
 
-A typical configuration sets only what you need:
+The native browser SDK captures exceptions. The plugin also captures unexpected Payload REST errors on the server and filters expected 4xx responses. Next.js request-error capture and source maps use separate native integrations; they are not enabled by the Payload plugin.
 
-```ts
-postHog({
-  apiKey: process.env.NEXT_PUBLIC_POSTHOG_KEY!,
-  clientOptions: {
-    api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
-    ui_host: 'https://eu.posthog.com',
-    capture_pageleave: true,
-  },
-  payload: {
-    identify: { properties: { name: 'fullName' } },
-    guestTracking: { paths: ['/accept-invitation', '/activate-account'] },
-  },
-})
-```
+Replay uses native PostHog configuration. Password inputs are masked; ordinary input values and text are visible unless you enable additional masking. The plugin redacts captured URLs before outbound telemetry, but does not sanitize arbitrary event properties or Replay content. See [Error Tracking](docs/error-tracking.md) and [Session Replay and privacy](docs/session-replay-and-privacy.md).
 
-### Function values are not supported
+## Conversations
 
-Client options cross Payload's server-to-client boundary, so functions cannot pass through. The plugin throws at startup if it finds one, for example `clientOptions.before_send must be serializable`. This affects native callbacks such as `before_send`, `loaded`, and Session Replay masking functions. There is no supported callback-module or import-map contract yet.
-
-## User identification
-
-Signed-in users are identified with the distinct ID `<collection>:<id>`, for example `users:12`. This keeps IDs from different auth collections apart.
-
-- **Email** is mapped to the `email` person property by default.
-- **Custom properties** come from `payload.identify.properties`. The key is the PostHog property name and the value is the Payload user field, such as `{ name: 'fullName' }`. Only string, number and boolean values are sent.
-- **When it runs:** after the Admin loads the signed-in user, on the dashboard and collection or global views. Other Admin views do not identify, and neither do routes that carry sensitive query parameters or tokens.
-- **Logout** calls `posthog.reset()`. A new anonymous ID starts for the next visit.
-- **Switching accounts** resets the SDK, then identifies the new user.
-- **Anonymous activity** before sign-in keeps its anonymous ID. PostHog associates it with the user when `identify` runs, according to its native identity behavior.
-
-Disable identification with `payload: { identify: { enabled: false } }`.
-
-The plugin does not synchronize identity from the server. Server events use whatever distinct ID your code passes to `posthog-node`.
-
-## Guest tracking
-
-Guest routes are Payload's public authentication routes, read from your Admin config: `createFirstUser`, `forgot`, `inactivity`, `login`, `logout`, `reset` and `unauthorized`. Add custom public routes with `paths`, relative to the Admin route:
-
-```ts
-payload: {
-  guestTracking: { paths: ['/accept-invitation', '/activate-account'] },
-}
-```
-
-`payload.guestTracking` controls two things on guest routes:
-
-    - **Authentication lifecycle events:** `auth_flow_started` on form submit, `auth_login_succeeded` after a recent login and identity transition, `auth_logout_started`, `auth_logout_completed`, `auth_account_switched`, and `auth_session_expired` after an observed expiry transition. Each event carries a `route_template`, not the URL.
-- **Session Replay** for guests on those routes.
-
-Set `enabled: false` to turn both off for guests. Signed-in users are always tracked.
-
-Guest tracking does not control pageviews or browser exception capture. The default pageview tracker suppresses authentication, custom, sensitive, and unsupported-query routes. Autocapture runs only on routes the tracker classifies as safe. See [Privacy and security](#privacy-and-security).
-
-## Native PostHog APIs
-
-Admin components run inside the plugin's `PostHogProvider`, so the official hooks and components work there. Import them from `@posthog/next`:
-
-```tsx
-'use client'
-
-import { PostHogFeature, useFeatureFlag, usePostHog } from '@posthog/next'
-
-export function PublishButton() {
-  const posthog = usePostHog()
-  const editor = useFeatureFlag('new-editor')
-
-  return (
-    <button onClick={() => posthog?.capture('publish_clicked', { collection: 'pages' })}>
-      {editor?.enabled ? 'Publish (new editor)' : 'Publish'}
-    </button>
-  )
-}
-
-export function Beta({ children }: { children: React.ReactNode }) {
-  return (
-    <PostHogFeature flag='new-editor' match>
-      {children}
-    </PostHogFeature>
-  )
-}
-```
-
-`useFeatureFlag` returns a `FeatureFlagResult` or `undefined` until flags load. Check `.enabled` and `.variant`.
-
-**`bootstrapFlags`** is a native option. When it is `true`, the server evaluates flags for the signed-in user and passes them to the browser, so the first render already has flag values. The plugin uses the identify properties as person properties for that evaluation. Bootstrapping only runs when the browser has a PostHog cookie. It also makes the Admin layout dynamic, because the server reads cookies.
-
-## Pageviews
-
-Pageview ownership follows `clientOptions.capture_pageview`:
-
-| Value              | Who captures pageviews                                                        |
-| ------------------ | ----------------------------------------------------------------------------- |
-| omitted (default)  | Plugin tracker emits `$pageview` on safe, classified routes                   |
-| `false`            | Nothing automatic. Capture with `posthog.capture('$pageview')`                |
-| `true`             | The SDK, for the initial page load only. Admin route changes are not captured |
-| `'history_change'` | The SDK, for the initial load and history changes                             |
-| object form        | The SDK, using the object form of `capture_pageview` from `posthog-js`        |
-
-The default tracker strips query strings, hashes, and document IDs from pageview properties. It suppresses custom, authentication, sensitive, and queried routes. Numeric `depth` and `limit` parameters are allowed for safe Admin views but removed from pageview URLs; other query parameters suppress tracking. It enables autocapture only on classified safe routes. Explicitly setting `capture_pageview` opts out of these protections and returns pageview ownership to the native SDK.
-
-The plugin deduplicates repeated renders of the same route. A packed Next.js consumer emitted `$pageview` and `collection_read` to a local sink; read URLs omitted `depth` and `limit`, and referrers omitted a previous credential-query URL.
-
-## Session Replay and Error Tracking
-
-Use Session Replay and Error Tracking to reproduce reported problems, see what editors did before an error, and connect exceptions to the user who hit them. Error stack traces are readable when you upload source maps (see [Source maps](#source-maps)).
-
-**Session Replay:**
-
-- Recording starts only for authenticated identities or enabled guest routes, and only when the route has no sensitive path segments or query parameters.
-- Guest recordings follow `payload.guestTracking` and run only on configured guest routes.
-- The plugin configures all inputs to be masked by default, and password inputs stay masked even if other masking options change. Live Replay payload masking has not been verified.
-- Set `disable_session_recording: true` to keep Replay off.
-
-**Browser Error Tracking:** native `capture_exceptions` behavior follows `posthog-js` options. With `capture_exceptions: true`, a synthetic exception message reached the local sink unchanged; this plugin cannot pass a browser `before_send` callback. Enable it only when host errors cannot contain secrets.
-
-**Payload routed errors:** unexpected errors handled by Payload's root `afterError` hook are captured by default. HTTP 4xx errors are suppressed. Disable this integration with `payload.errorTracking.enabled: false`, or add a server-side filter:
+Enable authenticated Conversations with a server-only signing secret:
 
 ```ts
 postHog({
   apiKey: process.env.NEXT_PUBLIC_POSTHOG_KEY!,
   payload: {
-    errorTracking: {
-      shouldCapture: ({ error, collection, status }) =>
-        status === 500 && collection !== 'privateRecords',
+    conversations: {
+      secret: process.env.POSTHOG_CONVERSATIONS_SECRET!,
+      launcher: 'visible',
     },
   },
 })
 ```
 
-The filter cannot enable HTTP 4xx capture. Error messages, exception values, request URLs, and full file paths are removed before delivery. Stack frames retain only safe function names, line numbers, and file basenames. This hook covers errors that reach Payload's routed REST error handler; it does not prove coverage for GraphQL or caught errors.
+`visible` renders PostHog's launcher for verified signed-in users. `hidden` lets your UI control the launcher. The public `usePostHogConversations()` hook provides `status`, `canOpen`, `isAvailable`, `open()`, `close()`, `show()`, and `hide()`. See [Conversations](docs/conversations.md).
 
-Payload awaits one immediate send attempt to reduce event loss in short-lived serverless processes. The default request timeout is 2 seconds with no retries; `serverOptions.requestTimeout` and `serverOptions.fetchRetryCount` override these limits. SDK failures never replace the Payload response.
+## Feature flags and native SDKs
 
-**Next.js request errors:** opt in from the host's single `instrumentation.ts` file:
+Use the native hooks from `@posthog/next`, such as `useFeatureFlag()`. Client-side evaluation needs no plugin option. Set `bootstrapFlags` only when you want server-side flag bootstrap; it can make Admin routes render at request time.
 
-```ts
-// instrumentation.ts
-import { capturePostHogError, registerPostHog } from '@klnap/payload-posthog/instrumentation'
+The plugin accepts serializable `posthog-js` and `posthog-node` options through `clientOptions` and `serverOptions`. Native options override plugin defaults, but password masking remains enforced and Conversations stays disabled unless `payload.conversations` is configured. See [Configuration and identification](docs/configuration-and-identification.md).
 
-export async function register() {
-  await registerPostHog()
-}
+## Debug
 
-export const onRequestError = capturePostHogError
-```
-
-The helper reads `NEXT_PUBLIC_POSTHOG_KEY` and `NEXT_PUBLIC_POSTHOG_HOST`. It uses `@posthog/next`'s separate cached Node client, not the client created from Payload's `serverOptions`. Exception details and request URLs are sanitized before capture. Next's request hook does not cover Proxy failures, build errors, or every caught exception.
-
-Campaign query parameters are not persisted or attached to later events (`save_campaign_params: false`). Session Replay can record visible Admin content. The default input mask reduces exposure but does not hide all text, images, or personal data.
-
-## Authenticated Support
-
-PostHog Support gives signed-in editors a conversation with your team from the Admin. The plugin verifies identity on the server, so no one can open a conversation as another user.
+`debug: true` logs server-side identity resolution and configuration. It does not confirm consent or telemetry delivery. Explicitly mapped values, including the default email mapping, may appear in logs.
 
 ```ts
 postHog({
-  apiKey: process.env.NEXT_PUBLIC_POSTHOG_KEY!,
+  apiKey: process.env.NEXT_PUBLIC_POSTHOG_KEY,
+  debug: true,
   payload: {
-    support: {
-      identitySecret: process.env.POSTHOG_SUPPORT_IDENTITY_SECRET!,
-      launcher: 'hidden',
+    identify: {
+      properties: {
+        name: 'profile.fullName',
+        roles: 'roles[].name',
+        organization_id: 'organization.id',
+      },
     },
   },
 })
 ```
 
-- **Identity endpoint:** `GET <Payload API route>/posthog/support/identity` returns the signed distinct ID for the signed-in user. It requires an authenticated Payload collection. Anonymous Support is not supported.
-- **Secret:** `identitySecret` is the PostHog Support identity verification secret. Keep it in server-only environment variables. It never reaches the browser.
-- **Launcher:** `'visible'` (default) shows PostHog's own widget button. `'hidden'` leaves the button to you.
-- **Conversations:** Support enables Conversations. Setting `disable_conversations: true` in `clientOptions` turns it off.
-
-Configuring Support does not render a button. Add your own with `usePostHogSupport`:
-
-```tsx
-'use client'
-
-import { usePostHogSupport } from '@klnap/payload-posthog/client'
-
-export function ContactSupport() {
-  const { canOpen, open } = usePostHogSupport()
-
-  return (
-    <button disabled={!canOpen} onClick={() => void open()}>
-      Contact support
-    </button>
-  )
-}
+```text
+[payload-posthog] mode: PostHog enabled. Plugin diagnostics only; native SDK debug is `clientOptions.debug`.
+[payload-posthog] configured identity property mappings:
+┌─────────┬─────────────────┬───────────────────────┐
+│         │ property        │ path                  │
+├─────────┼─────────────────┼───────────────────────┤
+│ 0       │ email           │ email                 │
+│ 1       │ name            │ profile.fullName      │
+│ 2       │ roles           │ roles[].name          │
+│ 3       │ organization_id │ organization.id       │
+└─────────┴─────────────────┴───────────────────────┘
+[payload-posthog] identity: resolved distinct ID users:123. Identified in the browser when consent allows.
+┌─────────┬─────────────────┬───────────────────────┬────────────────────┬───────────────────────────────┐
+│         │ property        │ path                  │ value              │ status                        │
+├─────────┼─────────────────┼───────────────────────┼────────────────────┼───────────────────────────────┤
+│ 0       │ email           │ email                 │ editor@example.com │ resolved                      │
+│ 1       │ name            │ profile.fullName      │ Riley Chen         │ resolved                      │
+│ 2       │ roles           │ roles[].name          │ ['admin', 'editor']│ resolved                      │
+│ 3       │ organization_id │ organization.id       │ undefined          │ omitted (missing or unsupported)│
+└─────────┴─────────────────┴───────────────────────┴────────────────────┴───────────────────────────────┘
 ```
 
-The hook reads your Admin route from the Payload config. It returns `status`, `isAvailable`, `canOpen`, `open` and `close`.
-
-## Source maps
-
-Source maps give readable stack traces in PostHog Error Tracking. Upload is a build-time step, separate from the runtime plugin. Wrap your Next.js config with PostHog's integration:
-
-```ts
-// next.config.ts
-import { withPostHogConfig } from '@klnap/payload-posthog/next-config'
-
-export default withPostHogConfig(nextConfig, {
-  personalApiKey: process.env.POSTHOG_API_KEY!,
-  projectId: process.env.POSTHOG_PROJECT_ID!,
-  host: process.env.POSTHOG_HOST,
-  sourcemaps: {
-    releaseName: 'studio',
-    releaseVersion: process.env.VERCEL_GIT_COMMIT_SHA,
-    deleteAfterUpload: true,
-  },
-})
-```
-
-- `personalApiKey` is a personal API key with permission to upload source maps. It is not the project key, and it must stay on the server.
-- `sourcemaps.enabled` defaults to `true`. `failOnError` defaults to `true`, so an upload failure fails the build. Set it to `false` to continue instead.
-- `deleteAfterUpload: true` removes the maps from the build output once they are uploaded.
-- Install `@posthog/nextjs-config` to use this export.
-
-## Privacy and security
-
-The plugin applies privacy guards before its own Admin pageview and autocapture events. It also sets these native defaults:
-
-- `disable_capture_url_hashes: true` removes `#fragments` from captured URLs.
-- `save_referrer: false` prevents a previous URL from leaking sensitive query values.
-- `session_recording.maskInputOptions.password: true` masks password inputs.
-- `session_recording.maskAllInputs: true` masks all input values by default.
-- `session_recording.maskTextSelector` always includes `[contenteditable]` while preserving host selectors.
-- `disable_conversations` follows whether Support is configured.
-
-The native `save_campaign_params` default is unchanged.
-
-> **Warning:** Native capture paths can still include sensitive data. Setting `clientOptions.capture_pageview` explicitly opts out of the plugin's safe pageview tracker. Native autocapture behavior is gated by route classification, but exception messages and Replay content need application-level review.
-
-Replay masks form controls, editable content, and native marked regions. Ordinary unmarked text remains visible; do not render credentials as unmarked text.
-
-The plugin's switches cannot prevent this on their own:
-
-- `capture_pageview: false` stops automatic pageviews, but you lose navigation analytics on every page.
-- `disable_session_recording: true` stops Session Replay everywhere.
-- `autocapture: false` stops autocapture everywhere.
-- `payload.guestTracking: { enabled: false }` stops authentication events and guest replay, but not pageviews, autocapture or exception capture.
-
-The plugin cannot configure native callbacks through serialized client options. Review browser errors, referrals, custom Admin routes, and Replay content before enabling telemetry.
-
-Keep these values on the server only: `payload.support.identitySecret`, `POSTHOG_API_KEY` (personal API key) and any server credentials.
+Without `apiKey`, `debug: true` enables keyless identity diagnostics only. No SDK, provider, telemetry, or remote SDK assets are initialized; the log states `Not transmitted: keyless mode.` Keep diagnostic output out of shared logs. See [Debugging](docs/debugging.md).
 
 ## Documentation
 
-- [PostHog and `posthog-js` reference](https://posthog.com/docs/references/posthog-js/types/PostHogConfig)
-- [`posthog-node` reference](https://posthog.com/docs/references/posthog-node/types/PostHogOptions)
-- [`@posthog/next`](https://posthog.com/docs/libraries/next-js/posthog-next)
-- [Payload custom components and import map](https://payloadcms.com/docs/custom-components/overview)
-- [Contributing](./CONTRIBUTING.md), [Security](./SECURITY.md) and [Changelog](./CHANGELOG.md)
+- [Configuration and identification](docs/configuration-and-identification.md)
+- [Error Tracking and Next.js instrumentation](docs/error-tracking.md)
+- [Session Replay and privacy](docs/session-replay-and-privacy.md)
+- [Conversations](docs/conversations.md)
+- [Debugging and troubleshooting](docs/debugging.md)
+- [Migration from 0.1.1](docs/migration.md)
+- [Technical specification](docs/specification.md)
+
+## Compatibility
+
+Requires Node.js `^24.22.3 || >=26.13.1`, Payload `>=3.94.1 <4`, Next.js `>=16.4.5 <17`, and React `^19.3.1`. Check the peer dependency ranges in [`package.json`](./package.json).
 
 ## License
 
-[MIT](./LICENSE)
+MIT
